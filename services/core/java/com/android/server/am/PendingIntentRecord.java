@@ -307,7 +307,7 @@ final class PendingIntentRecord extends IIntentSender.Stub {
                             } else if (finalIntent.getComponent() != null) {
                                 finalIntent.getComponent().appendShortString(tag);
                             } else if (finalIntent.getData() != null) {
-                                tag.append(finalIntent.getData().toSafeString());
+                                tag.append(finalIntent.getData());
                             }
                             owner.tempWhitelistForPendingIntentLocked(callingPid,
                                     callingUid, uid, duration, tag.toString());
@@ -344,17 +344,15 @@ final class PendingIntentRecord extends IIntentSender.Stub {
                                 allResolvedTypes[allResolvedTypes.length-1] = resolvedType;
 
                                 res = owner.getActivityStartController().startActivitiesInPackage(
-                                        uid, callingPid, callingUid, key.packageName, allIntents,
-                                        allResolvedTypes, resultTo, mergedOptions, userId,
-                                        false /* validateIncomingUser */,
-                                        this /* originatingPendingIntent */);
+                                        uid, key.packageName, allIntents, allResolvedTypes,
+                                        resultTo, mergedOptions, userId,
+                                        false /* validateIncomingUser */);
                             } else {
                                 res = owner.getActivityStartController().startActivityInPackage(uid,
                                         callingPid, callingUid, key.packageName, finalIntent,
                                         resolvedType, resultTo, resultWho, requestCode, 0,
                                         mergedOptions, userId, null, "PendingIntentRecord",
-                                        false /* validateIncomingUser */,
-                                        this /* originatingPendingIntent */);
+                                        false /* validateIncomingUser */);
                             }
                         } catch (RuntimeException e) {
                             Slog.w(TAG, "Unable to send startActivity intent", e);

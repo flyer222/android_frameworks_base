@@ -1282,6 +1282,7 @@ package android.hardware.hdmi {
   }
 
   public final class HdmiControlManager {
+    ctor public HdmiControlManager(android.hardware.hdmi.IHdmiControlService);
     method public void addHotplugEventListener(android.hardware.hdmi.HdmiControlManager.HotplugEventListener);
     method public android.hardware.hdmi.HdmiClient getClient(int);
     method public android.hardware.hdmi.HdmiPlaybackClient getPlaybackClient();
@@ -1539,6 +1540,7 @@ package android.hardware.hdmi {
     method public java.util.List<android.hardware.hdmi.HdmiDeviceInfo> getDeviceList();
     method public int getDeviceType();
     method public void portSelect(int, android.hardware.hdmi.HdmiTvClient.SelectCallback);
+    method public void removeInputChangeListener();
     method public void sendMhlVendorCommand(int, int, int, byte[]);
     method public void sendStandby(int);
     method public void setHdmiMhlVendorCommandListener(android.hardware.hdmi.HdmiTvClient.HdmiMhlVendorCommandListener);

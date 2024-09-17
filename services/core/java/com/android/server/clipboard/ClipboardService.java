@@ -152,11 +152,6 @@ public class ClipboardService extends SystemService {
 
     private final SparseArray<PerUserClipboard> mClipboards = new SparseArray<>();
 
-    /* AppOps check variants for the clipboardAccessAllowed method */
-    private static final int APPOP_NOTE = 1;    /** Call AppOps.noteOp method */
-    private static final int APPOP_CHECK = 2;   /** Call AppOps.checkOp method */
-    private static final int APPOP_NOTHROW = 3; /** Call AppOps.checkOpNoThrow method */
-
     /**
      * Instantiates the clipboard.
      */
@@ -257,7 +252,7 @@ public class ClipboardService extends SystemService {
                 }
                 final int callingUid = Binder.getCallingUid();
                 if (!clipboardAccessAllowed(AppOpsManager.OP_WRITE_CLIPBOARD, callingPackage,
-                            callingUid, APPOP_NOTE)) {
+                            callingUid)) {
                     return;
                 }
                 checkDataOwnerLocked(clip, callingUid);
@@ -270,7 +265,7 @@ public class ClipboardService extends SystemService {
             synchronized (this) {
                 final int callingUid = Binder.getCallingUid();
                 if (!clipboardAccessAllowed(AppOpsManager.OP_WRITE_CLIPBOARD, callingPackage,
-                        callingUid, APPOP_NOTHROW)) {
+                        callingUid)) {
                     return;
                 }
                 setPrimaryClipInternal(null, callingUid);
@@ -281,7 +276,7 @@ public class ClipboardService extends SystemService {
         public ClipData getPrimaryClip(String pkg) {
             synchronized (this) {
                 if (!clipboardAccessAllowed(AppOpsManager.OP_READ_CLIPBOARD, pkg,
-                            Binder.getCallingUid(), APPOP_NOTE) || isDeviceLocked()) {
+                            Binder.getCallingUid()) || isDeviceLocked()) {
                     return null;
                 }
                 addActiveOwnerLocked(Binder.getCallingUid(), pkg);
@@ -293,7 +288,7 @@ public class ClipboardService extends SystemService {
         public ClipDescription getPrimaryClipDescription(String callingPackage) {
             synchronized (this) {
                 if (!clipboardAccessAllowed(AppOpsManager.OP_READ_CLIPBOARD, callingPackage,
-                            Binder.getCallingUid(), APPOP_CHECK) || isDeviceLocked()) {
+                            Binder.getCallingUid()) || isDeviceLocked()) {
                     return null;
                 }
                 PerUserClipboard clipboard = getClipboard();
@@ -305,7 +300,7 @@ public class ClipboardService extends SystemService {
         public boolean hasPrimaryClip(String callingPackage) {
             synchronized (this) {
                 if (!clipboardAccessAllowed(AppOpsManager.OP_READ_CLIPBOARD, callingPackage,
-                            Binder.getCallingUid(), APPOP_CHECK) || isDeviceLocked()) {
+                            Binder.getCallingUid()) || isDeviceLocked()) {
                     return false;
                 }
                 return getClipboard().primaryClip != null;
@@ -332,7 +327,7 @@ public class ClipboardService extends SystemService {
         public boolean hasClipboardText(String callingPackage) {
             synchronized (this) {
                 if (!clipboardAccessAllowed(AppOpsManager.OP_READ_CLIPBOARD, callingPackage,
-                            Binder.getCallingUid(), APPOP_CHECK) || isDeviceLocked()) {
+                            Binder.getCallingUid()) || isDeviceLocked()) {
                     return false;
                 }
                 PerUserClipboard clipboard = getClipboard();
@@ -469,7 +464,7 @@ public class ClipboardService extends SystemService {
                             clipboard.primaryClipListeners.getBroadcastCookie(i);
 
                     if (clipboardAccessAllowed(AppOpsManager.OP_READ_CLIPBOARD, li.mPackageName,
-                                li.mUid, APPOP_NOTHROW)) {
+                                li.mUid)) {
                         clipboard.primaryClipListeners.getBroadcastItem(i)
                                 .dispatchPrimaryClipChanged();
                     }
@@ -624,24 +619,9 @@ public class ClipboardService extends SystemService {
         }
     }
 
-    private boolean clipboardAccessAllowed(int op, String callingPackage,
-            int callingUid, int appOpMethod) {
-        int appOpResult;
-
-        // Check the AppOp depending on the specified method.
-        switch (appOpMethod) {
-            case APPOP_NOTE:
-                appOpResult = mAppOps.noteOp(op, callingUid, callingPackage);
-                break;
-            case APPOP_NOTHROW:
-                appOpResult = mAppOps.checkOpNoThrow(op, callingUid, callingPackage);
-                break;
-            default:
-                appOpResult = mAppOps.checkOp(op, callingUid, callingPackage);
-                break;
-        }
-
-        if (appOpResult != AppOpsManager.MODE_ALLOWED) {
+    private boolean clipboardAccessAllowed(int op, String callingPackage, int callingUid) {
+        // Check the AppOp.
+        if (mAppOps.noteOp(op, callingUid, callingPackage) != AppOpsManager.MODE_ALLOWED) {
             return false;
         }
         try {

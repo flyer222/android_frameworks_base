@@ -961,10 +961,6 @@ public final class ThreadedRenderer {
         nSetDebuggingEnabled(enable);
     }
 
-    void allocateBuffers(Surface surface) {
-        nAllocateBuffers(mNativeProxy, surface);
-    }
-
     @Override
     protected void finalize() throws Throwable {
         try {
@@ -1255,5 +1251,4 @@ public final class ThreadedRenderer {
     private static native void nSetDebuggingEnabled(boolean enabled);
     private static native void nSetIsolatedProcess(boolean enabled);
     private static native void nSetContextPriority(int priority);
-    private static native void nAllocateBuffers(long nativeProxy, Surface window);
 }

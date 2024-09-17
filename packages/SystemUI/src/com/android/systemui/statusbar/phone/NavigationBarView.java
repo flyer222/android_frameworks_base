@@ -18,7 +18,6 @@ package com.android.systemui.statusbar.phone;
 
 import static android.view.MotionEvent.ACTION_DOWN;
 import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_BACK;
-import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_DEAD_ZONE;
 import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_HOME;
 import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_NONE;
 
@@ -79,26 +78,20 @@ import com.android.systemui.stackdivider.Divider;
 import com.android.systemui.statusbar.policy.DeadZone;
 import com.android.systemui.statusbar.policy.KeyButtonDrawable;
 import com.android.systemui.statusbar.policy.TintedKeyButtonDrawable;
-import com.android.systemui.tuner.TunerService;
-
-import lineageos.providers.LineageSettings;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.function.Consumer;
+import android.util.DisplayMetrics;
 
 import static com.android.systemui.shared.system.NavigationBarCompat.FLAG_DISABLE_QUICK_SCRUB;
 import static com.android.systemui.shared.system.NavigationBarCompat.FLAG_SHOW_OVERVIEW_BUTTON;
 import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_OVERVIEW;
 import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_ROTATION;
 
-public class NavigationBarView extends FrameLayout implements PluginListener<NavGesture>,
-        TunerService.Tunable {
+public class NavigationBarView extends FrameLayout implements PluginListener<NavGesture> {
     final static boolean DEBUG = false;
     final static String TAG = "StatusBar/NavBarView";
-
-    public static final String NAVIGATION_BAR_MENU_ARROW_KEYS =
-            "lineagesystem:" + LineageSettings.System.NAVIGATION_BAR_MENU_ARROW_KEYS;
 
     // slippery nav bar when everything is disabled, e.g. during setup
     final static boolean SLIPPERY_WHEN_DISABLED = true;
@@ -132,6 +125,10 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
     private KeyButtonDrawable mBackAltCarModeIcon, mBackAltLandCarModeIcon;
     private KeyButtonDrawable mHomeDefaultIcon, mHomeCarModeIcon;
     private KeyButtonDrawable mRecentIcon;
+    private KeyButtonDrawable mVolumeAddIcon;
+    private KeyButtonDrawable mVolumeSubIcon;
+    private KeyButtonDrawable mScreenshotIcon;
+    private KeyButtonDrawable mPoweroffIcon;
     private KeyButtonDrawable mDockedIcon;
     private KeyButtonDrawable mImeIcon;
     private KeyButtonDrawable mMenuIcon;
@@ -168,8 +165,6 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
     private NotificationPanelView mPanelView;
 
     private int mRotateBtnStyle = R.style.RotateButtonCCWStart90;
-
-    private boolean mShowDpadArrowKeys;
 
     private class NavTransitionListener implements TransitionListener {
         private boolean mBackTransitioning;
@@ -303,6 +298,10 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
         mButtonDispatchers.put(R.id.recent_apps, new ButtonDispatcher(R.id.recent_apps));
         mButtonDispatchers.put(R.id.menu, new ButtonDispatcher(R.id.menu));
         mButtonDispatchers.put(R.id.ime_switcher, new ButtonDispatcher(R.id.ime_switcher));
+        mButtonDispatchers.put(R.id.volume_add, new ButtonDispatcher(R.id.volume_add));
+        mButtonDispatchers.put(R.id.volume_sub, new ButtonDispatcher(R.id.volume_sub));
+        mButtonDispatchers.put(R.id.screenshot , new ButtonDispatcher(R.id.screenshot));
+        mButtonDispatchers.put(R.id.poweroff, new ButtonDispatcher(R.id.poweroff));
         mButtonDispatchers.put(R.id.accessibility_button,
                 new ButtonDispatcher(R.id.accessibility_button));
         mButtonDispatchers.put(R.id.rotate_suggestion,
@@ -338,15 +337,15 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
 
     @Override
     public boolean onInterceptTouchEvent(MotionEvent event) {
-        final boolean deadZoneConsumed = shouldDeadZoneConsumeTouchEvents(event);
+        if (shouldDeadZoneConsumeTouchEvents(event)) {
+            return true;
+        }
         switch (event.getActionMasked()) {
             case ACTION_DOWN:
                 int x = (int) event.getX();
                 int y = (int) event.getY();
                 mDownHitTarget = HIT_TARGET_NONE;
-                if (deadZoneConsumed) {
-                    mDownHitTarget = HIT_TARGET_DEAD_ZONE;
-                } else if (getBackButton().isVisible() && mBackButtonBounds.contains(x, y)) {
+                if (getBackButton().isVisible() && mBackButtonBounds.contains(x, y)) {
                     mDownHitTarget = HIT_TARGET_BACK;
                 } else if (getHomeButton().isVisible() && mHomeButtonBounds.contains(x, y)) {
                     mDownHitTarget = HIT_TARGET_HOME;
@@ -363,7 +362,9 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        shouldDeadZoneConsumeTouchEvents(event);
+        if (shouldDeadZoneConsumeTouchEvents(event)) {
+            return true;
+        }
         if (mGestureHelper.onTouchEvent(event)) {
             return true;
         }
@@ -428,6 +429,22 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
         return mButtonDispatchers.get(R.id.ime_switcher);
     }
 
+    public ButtonDispatcher getVolumeAddButton() {
+        return mButtonDispatchers.get(R.id.volume_add);
+    }
+
+    public ButtonDispatcher getVolumeSubButton() {
+        return mButtonDispatchers.get(R.id.volume_sub);
+    }
+
+    public ButtonDispatcher getScreenshotButton() {
+        return mButtonDispatchers.get(R.id.screenshot);
+    }
+
+    public ButtonDispatcher getPoweroffButton() {
+        return mButtonDispatchers.get(R.id.poweroff);
+    }
+
     public ButtonDispatcher getAccessibilityButton() {
         return mButtonDispatchers.get(R.id.accessibility_button);
     }
@@ -460,10 +477,6 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
         return SystemProperties.getBoolean("persist.quickstep.scrub.enabled", true)
                 && mOverviewProxyService.isEnabled() && isOverviewEnabled()
                 && ((mOverviewProxyService.getInteractionFlags() & FLAG_DISABLE_QUICK_SCRUB) == 0);
-    }
-
-    public ViewGroup getDpadView() {
-        return (ViewGroup) getCurrentView().findViewById(R.id.dpad_group);
     }
 
     // TODO(b/80003212): change car mode icons to vector icons.
@@ -499,6 +512,10 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
             mRecentIcon = getDrawable(lightContext, darkContext, R.drawable.ic_sysbar_recent);
             mMenuIcon = getDrawable(lightContext, darkContext, R.drawable.ic_sysbar_menu);
 
+            mVolumeAddIcon = getDrawable(lightContext, darkContext, R.drawable.ic_sysbar_volume_add);
+            mVolumeSubIcon = getDrawable(lightContext, darkContext, R.drawable.ic_sysbar_volume_sub);
+            mScreenshotIcon = getDrawable(lightContext, darkContext, R.drawable.ic_sysbar_capture);
+            mPoweroffIcon = getDrawable(lightContext, darkContext, R.drawable.ic_sysbar_poweroff);
             mAccessibilityIcon = getDrawable(lightContext, darkContext,
                     R.drawable.ic_sysbar_accessibility_button, false /* hasShadow */);
 
@@ -641,11 +658,15 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
 
         updateRecentsIcon();
 
+        getVolumeAddButton().setImageDrawable(mVolumeAddIcon);
+        getVolumeSubButton().setImageDrawable(mVolumeSubIcon);
+        getScreenshotButton().setImageDrawable(mScreenshotIcon);
+        getPoweroffButton().setImageDrawable(mPoweroffIcon);
+
         // Update IME button visibility, a11y and rotate button always overrides the appearance
         final boolean showImeButton =
                 !mShowAccessibilityButton &&
                         !mShowRotateButton &&
-                        !mShowDpadArrowKeys &&
                         ((mNavigationIconHints & StatusBarManager.NAVIGATION_HINT_IME_SHOWN) != 0);
         getImeSwitchButton().setVisibility(showImeButton ? View.VISIBLE : View.INVISIBLE);
         getImeSwitchButton().setImageDrawable(mImeIcon);
@@ -662,7 +683,6 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
         getAccessibilityButton().setImageDrawable(mAccessibilityIcon);
 
         mBarTransitions.reapplyDarkIntensity();
-        updateDpadKeys();
 
         boolean disableHome = ((mDisabledFlags & View.STATUS_BAR_DISABLE_HOME) != 0);
 
@@ -778,7 +798,7 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
                 showSwipeUpUI ? mQuickStepAccessibilityDelegate : null);
     }
 
-    public void updateSlippery() {
+    private void updateSlippery() {
         setSlippery(!isQuickStepSwipeUpEnabled() || mPanelView.isFullyExpanded());
     }
 
@@ -979,7 +999,19 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
     }
 
     private void updateCurrentView() {
-        final int rot = mDisplay.getRotation();
+        int rot = mDisplay.getRotation();
+        int width = mDisplay.getWidth();
+        int heigth = mDisplay.getHeight();
+        int shortSize = width > heigth ? heigth : width;
+        int dp = shortSize * DisplayMetrics.DENSITY_DEFAULT / DisplayMetrics.DENSITY_DEVICE;
+        Log.d(TAG, "NavigationBar shortSize:"+ shortSize +"DisplayMetrics.DENSITY_DEFAULT:"+ DisplayMetrics.DENSITY_DEFAULT +"DENSITY_DEVICE:"+DisplayMetrics.DENSITY_DEVICE);
+        // mNavigationBarCanMove = width != height && shortSizeDp < 600; from PhoneWindowManager.java
+        // this situation, NavigationBar will be moved to LEFT/RIGHT side to show.
+        if (dp < 600 && width != heigth && rot!= 0 && rot !=2) {
+        rot = (rot + 1) % 4;
+            Log.d(TAG, "NavigationBar orient is workaround displayed");
+        }
+
         for (int i=0; i<4; i++) {
             mRotatedViews[i].setVisibility(View.GONE);
         }
@@ -1152,8 +1184,6 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
         onPluginDisconnected(null); // Create default gesture helper
         Dependency.get(PluginManager.class).addPluginListener(this,
                 NavGesture.class, false /* Only one */);
-        final TunerService tunerService = Dependency.get(TunerService.class);
-        tunerService.addTunable(this, NAVIGATION_BAR_MENU_ARROW_KEYS);
         setUpSwipeUpOnboarding(isQuickStepSwipeUpEnabled());
     }
 
@@ -1165,14 +1195,6 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
             mGestureHelper.destroy();
         }
         setUpSwipeUpOnboarding(false);
-    }
-
-    @Override
-    public void onTuningChanged(String key, String newValue) {
-        if (NAVIGATION_BAR_MENU_ARROW_KEYS.equals(key)) {
-            mShowDpadArrowKeys = TunerService.parseIntegerSwitch(newValue, false);
-            setNavigationIconHints(mNavigationIconHints);
-        }
     }
 
     private void setUpSwipeUpOnboarding(boolean connectedToOverviewProxy) {
@@ -1233,6 +1255,7 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
         dumpButton(pw, "menu", getMenuButton());
         dumpButton(pw, "a11y", getAccessibilityButton());
 
+        dumpButton(pw, "screenshot", getScreenshotButton());
         mRecentsOnboarding.dump(pw);
 
         pw.println("    }");
@@ -1259,14 +1282,6 @@ public class NavigationBarView extends FrameLayout implements PluginListener<Nav
 
     public interface OnVerticalChangedListener {
         void onVerticalChanged(boolean isVertical);
-    }
-
-    public void updateDpadKeys() {
-        final int visibility = mShowDpadArrowKeys && (mNavigationIconHints
-                & StatusBarManager.NAVIGATION_HINT_BACK_ALT) != 0 ? View.VISIBLE : View.GONE;
-
-        getDpadView().findViewById(R.id.dpad_left).setVisibility(visibility);
-        getDpadView().findViewById(R.id.dpad_right).setVisibility(visibility);
     }
 
     private final Consumer<Boolean> mDockedListener = exists -> mHandler.post(() -> {

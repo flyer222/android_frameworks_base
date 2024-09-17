@@ -16,25 +16,29 @@
 
 package com.android.server.display;
 
+import com.android.server.EventLogTags;
+import com.android.server.LocalServices;
+
 import android.annotation.Nullable;
+import android.app.ActivityManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.hardware.display.BrightnessConfiguration;
 import android.hardware.display.DisplayManagerInternal.DisplayPowerRequest;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.os.Trace;
+import android.text.format.DateUtils;
 import android.util.EventLog;
 import android.util.MathUtils;
 import android.util.Slog;
 import android.util.TimeUtils;
-
-import com.android.server.EventLogTags;
 
 import java.io.PrintWriter;
 
@@ -123,8 +127,7 @@ class AutomaticBrightnessController {
     private final int mWeightingIntercept;
 
     // Configuration object for determining thresholds to change brightness dynamically
-    private final HysteresisLevels mAmbientBrightnessThresholds;
-    private final HysteresisLevels mScreenBrightnessThresholds;
+    private final HysteresisLevels mHysteresisLevels;
 
     // Amount of time to delay auto-brightness after screen on while waiting for
     // the light sensor to warm-up in milliseconds.
@@ -144,12 +147,8 @@ class AutomaticBrightnessController {
     private boolean mAmbientLuxValid;
 
     // The ambient light level threshold at which to brighten or darken the screen.
-    private float mAmbientBrighteningThreshold;
-    private float mAmbientDarkeningThreshold;
-
-    // The screen light level threshold at which to brighten or darken the screen.
-    private float mScreenBrighteningThreshold;
-    private float mScreenDarkeningThreshold;
+    private float mBrighteningLuxThreshold;
+    private float mDarkeningLuxThreshold;
 
     // The most recent light sample.
     private float mLastObservedLux;
@@ -197,8 +196,7 @@ class AutomaticBrightnessController {
             int lightSensorWarmUpTime, int brightnessMin, int brightnessMax, float dozeScaleFactor,
             int lightSensorRate, int initialLightSensorRate, long brighteningLightDebounceConfig,
             long darkeningLightDebounceConfig, boolean resetAmbientLuxAfterWarmUpConfig,
-            HysteresisLevels ambientBrightnessThresholds,
-            HysteresisLevels screenBrightnessThresholds) {
+            HysteresisLevels hysteresisLevels) {
         mCallbacks = callbacks;
         mSensorManager = sensorManager;
         mBrightnessMapper = mapper;
@@ -214,8 +212,7 @@ class AutomaticBrightnessController {
         mResetAmbientLuxAfterWarmUpConfig = resetAmbientLuxAfterWarmUpConfig;
         mAmbientLightHorizon = AMBIENT_LIGHT_LONG_HORIZON_MILLIS;
         mWeightingIntercept = AMBIENT_LIGHT_LONG_HORIZON_MILLIS;
-        mAmbientBrightnessThresholds = ambientBrightnessThresholds;
-        mScreenBrightnessThresholds = screenBrightnessThresholds;
+        mHysteresisLevels = hysteresisLevels;
         mShortTermModelValid = true;
         mShortTermModelAnchor = -1;
 
@@ -367,10 +364,8 @@ class AutomaticBrightnessController {
         pw.println("  mCurrentLightSensorRate=" + mCurrentLightSensorRate);
         pw.println("  mAmbientLux=" + mAmbientLux);
         pw.println("  mAmbientLuxValid=" + mAmbientLuxValid);
-        pw.println("  mAmbientBrighteningThreshold=" + mAmbientBrighteningThreshold);
-        pw.println("  mAmbientDarkeningThreshold=" + mAmbientDarkeningThreshold);
-        pw.println("  mScreenBrighteningThreshold=" + mScreenBrighteningThreshold);
-        pw.println("  mScreenDarkeningThreshold=" + mScreenDarkeningThreshold);
+        pw.println("  mBrighteningLuxThreshold=" + mBrighteningLuxThreshold);
+        pw.println("  mDarkeningLuxThreshold=" + mDarkeningLuxThreshold);
         pw.println("  mLastObservedLux=" + mLastObservedLux);
         pw.println("  mLastObservedLuxTime=" + TimeUtils.formatUptime(mLastObservedLuxTime));
         pw.println("  mRecentLightSamples=" + mRecentLightSamples);
@@ -389,8 +384,7 @@ class AutomaticBrightnessController {
         mBrightnessMapper.dump(pw);
 
         pw.println();
-        mAmbientBrightnessThresholds.dump(pw);
-        mScreenBrightnessThresholds.dump(pw);
+        mHysteresisLevels.dump(pw);
     }
 
     private boolean setLightSensorEnabled(boolean enable) {
@@ -406,7 +400,6 @@ class AutomaticBrightnessController {
         } else if (mLightSensorEnabled) {
             mLightSensorEnabled = false;
             mAmbientLuxValid = !mResetAmbientLuxAfterWarmUpConfig;
-            mScreenAutoBrightness = -1;
             mRecentLightSamples = 0;
             mAmbientLightRingBuffer.clear();
             mCurrentLightSensorRate = -1;
@@ -466,8 +459,8 @@ class AutomaticBrightnessController {
             lux = 0;
         }
         mAmbientLux = lux;
-        mAmbientBrighteningThreshold = mAmbientBrightnessThresholds.getBrighteningThreshold(lux);
-        mAmbientDarkeningThreshold = mAmbientBrightnessThresholds.getDarkeningThreshold(lux);
+        mBrighteningLuxThreshold = mHysteresisLevels.getBrighteningThreshold(lux);
+        mDarkeningLuxThreshold = mHysteresisLevels.getDarkeningThreshold(lux);
 
         // If the short term model was invalidated and the change is drastic enough, reset it.
         if (!mShortTermModelValid && mShortTermModelAnchor != -1) {
@@ -558,7 +551,7 @@ class AutomaticBrightnessController {
         final int N = mAmbientLightRingBuffer.size();
         long earliestValidTime = time;
         for (int i = N - 1; i >= 0; i--) {
-            if (mAmbientLightRingBuffer.getLux(i) <= mAmbientBrighteningThreshold) {
+            if (mAmbientLightRingBuffer.getLux(i) <= mBrighteningLuxThreshold) {
                 break;
             }
             earliestValidTime = mAmbientLightRingBuffer.getTime(i);
@@ -570,7 +563,7 @@ class AutomaticBrightnessController {
         final int N = mAmbientLightRingBuffer.size();
         long earliestValidTime = time;
         for (int i = N - 1; i >= 0; i--) {
-            if (mAmbientLightRingBuffer.getLux(i) >= mAmbientDarkeningThreshold) {
+            if (mAmbientLightRingBuffer.getLux(i) >= mDarkeningLuxThreshold) {
                 break;
             }
             earliestValidTime = mAmbientLightRingBuffer.getTime(i);
@@ -623,19 +616,20 @@ class AutomaticBrightnessController {
         float slowAmbientLux = calculateAmbientLux(time, AMBIENT_LIGHT_LONG_HORIZON_MILLIS);
         float fastAmbientLux = calculateAmbientLux(time, AMBIENT_LIGHT_SHORT_HORIZON_MILLIS);
 
-        if ((slowAmbientLux >= mAmbientBrighteningThreshold
-                && fastAmbientLux >= mAmbientBrighteningThreshold
-                && nextBrightenTransition <= time)
-                || (slowAmbientLux <= mAmbientDarkeningThreshold
-                        && fastAmbientLux <= mAmbientDarkeningThreshold
-                        && nextDarkenTransition <= time)) {
+        if ((slowAmbientLux >= mBrighteningLuxThreshold &&
+             fastAmbientLux >= mBrighteningLuxThreshold &&
+             nextBrightenTransition <= time)
+             ||
+            (slowAmbientLux <= mDarkeningLuxThreshold &&
+             fastAmbientLux <= mDarkeningLuxThreshold &&
+             nextDarkenTransition <= time)) {
             setAmbientLux(fastAmbientLux);
             if (DEBUG) {
                 Slog.d(TAG, "updateAmbientLux: " +
-                        ((fastAmbientLux > mAmbientLux) ? "Brightened" : "Darkened") + ": "
-                        + "mAmbientBrighteningThreshold=" + mAmbientBrighteningThreshold + ", "
-                        + "mAmbientLightRingBuffer=" + mAmbientLightRingBuffer + ", "
-                        + "mAmbientLux=" + mAmbientLux);
+                        ((fastAmbientLux > mAmbientLux) ? "Brightened" : "Darkened") + ": " +
+                        "mBrighteningLuxThreshold=" + mBrighteningLuxThreshold + ", " +
+                        "mAmbientLightRingBuffer=" + mAmbientLightRingBuffer + ", " +
+                        "mAmbientLux=" + mAmbientLux);
             }
             updateAutoBrightness(true);
             nextBrightenTransition = nextAmbientLightBrighteningTransition(time);
@@ -666,20 +660,6 @@ class AutomaticBrightnessController {
 
         int newScreenAutoBrightness =
                 clampScreenBrightness(Math.round(value * PowerManager.BRIGHTNESS_ON));
-
-        // If mScreenAutoBrightness is set, we should have screen{Brightening,Darkening}Threshold,
-        // in which case we ignore the new screen brightness if it doesn't differ enough from the
-        // previous one.
-        if (mScreenAutoBrightness != -1
-                && newScreenAutoBrightness > mScreenDarkeningThreshold
-                && newScreenAutoBrightness < mScreenBrighteningThreshold) {
-            if (DEBUG) {
-                Slog.d(TAG, "ignoring newScreenAutoBrightness: " + mScreenDarkeningThreshold
-                        + " < " + newScreenAutoBrightness + " < " + mScreenBrighteningThreshold);
-            }
-            return;
-        }
-
         if (mScreenAutoBrightness != newScreenAutoBrightness) {
             if (DEBUG) {
                 Slog.d(TAG, "updateAutoBrightness: " +
@@ -688,11 +668,6 @@ class AutomaticBrightnessController {
             }
 
             mScreenAutoBrightness = newScreenAutoBrightness;
-            mScreenBrighteningThreshold =
-                    mScreenBrightnessThresholds.getBrighteningThreshold(newScreenAutoBrightness);
-            mScreenDarkeningThreshold =
-                    mScreenBrightnessThresholds.getDarkeningThreshold(newScreenAutoBrightness);
-
             if (sendUpdate) {
                 mCallbacks.updateBrightness();
             }

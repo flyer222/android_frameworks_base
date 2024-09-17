@@ -16,9 +16,6 @@
 */
 -->
 <resources>
-    <!-- Width for the spacer, used between QS tiles. -->
-    <dimen name="qs_quick_tile_space_width">0dp</dimen>
-
     <!-- Standard notification width + gravity -->
     <dimen name="notification_panel_width">@dimen/standard_notification_panel_width</dimen>
 
@@ -85,9 +82,6 @@
     <dimen name="screen_pinning_request_side_width">8dp</dimen>
 
     <dimen name="fab_margin">24dp</dimen>
-
-    <dimen name="navigation_key_width">128dp</dimen>
-    <dimen name="navigation_key_padding">25dp</dimen>
 
     <!-- Keyboard shortcuts helper -->
     <dimen name="ksh_layout_width">488dp</dimen>

@@ -108,7 +108,6 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
     private static final int COLORED_DIVIDER_ALPHA = 0x7B;
     private static final int MENU_VIEW_INDEX = 0;
     private static final String TAG = "ExpandableNotifRow";
-    public static final float DEFAULT_HEADER_VISIBLE_AMOUNT = 1.0f;
 
     /**
      * Listener for when {@link ExpandableNotificationRow} is laid out.
@@ -158,7 +157,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
     private boolean mSensitiveHiddenInGeneral;
     private boolean mShowingPublicInitialized;
     private boolean mHideSensitiveForIntrinsicHeight;
-    private float mHeaderVisibleAmount = DEFAULT_HEADER_VISIBLE_AMOUNT;
+    private float mHeaderVisibleAmount = 1.0f;
 
     /**
      * Is this notification expanded by the system. The expansion state can be overridden by the
@@ -1856,8 +1855,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
         float interpolation = Interpolators.FAST_OUT_SLOW_IN.getInterpolation(params.getProgress());
         int startClipTopAmount = params.getStartClipTopAmount();
         if (mNotificationParent != null) {
-            float parentY = mNotificationParent.getTranslationY();
-            top -= parentY;
+            top -= mNotificationParent.getTranslationY();
             mNotificationParent.setTranslationZ(translationZ);
             int parentStartClipTopAmount = params.getParentStartClipTopAmount();
             if (startClipTopAmount != 0) {
@@ -1867,12 +1865,8 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
                 mNotificationParent.setClipTopAmount(clipTopAmount);
             }
             mNotificationParent.setExtraWidthForClipping(extraWidthForClipping);
-            float clipBottom = Math.max(params.getBottom(),
-                    parentY + mNotificationParent.getActualHeight()
-                            - mNotificationParent.getClipBottomAmount());
-            float clipTop = Math.min(params.getTop(), parentY);
-            int minimumHeightForClipping = (int) (clipBottom - clipTop);
-            mNotificationParent.setMinimumHeightForClipping(minimumHeightForClipping);
+            mNotificationParent.setMinimumHeightForClipping(params.getHeight()
+                    + mNotificationParent.getActualHeight());
         } else if (startClipTopAmount != 0) {
             int clipTopAmount = (int) MathUtils.lerp(startClipTopAmount, 0, interpolation);
             setClipTopAmount(clipTopAmount);
@@ -1927,8 +1921,6 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
 
     private void setChildIsExpanding(boolean isExpanding) {
         mChildIsExpanding = isExpanding;
-        updateClipping();
-        invalidate();
     }
 
     @Override
@@ -1938,7 +1930,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
 
     @Override
     protected boolean shouldClipToActualHeight() {
-        return super.shouldClipToActualHeight() && !mExpandAnimationRunning;
+        return super.shouldClipToActualHeight() && !mExpandAnimationRunning && !mChildIsExpanding;
     }
 
     @Override
@@ -2834,7 +2826,7 @@ public class ExpandableNotificationRow extends ActivatableNotificationView
                 return true;
             }
         } else if (child == mChildrenContainer) {
-            if (isClippingNeeded() || !hasNoRounding()) {
+            if (!mChildIsExpanding && (isClippingNeeded() || !hasNoRounding())) {
                 return true;
             }
         } else if (child instanceof NotificationGuts) {

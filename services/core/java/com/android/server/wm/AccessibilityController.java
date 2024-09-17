@@ -71,7 +71,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * This class contains the accessibility related logic of the window manager.
+ * This class contains the accessibility related logic of the window manger.
  */
 final class AccessibilityController {
 

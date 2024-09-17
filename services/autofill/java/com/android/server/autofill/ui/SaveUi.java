@@ -81,13 +81,6 @@ final class SaveUi {
         void onDestroy();
     }
 
-    /**
-     * Wrapper that guarantees that only one callback is triggered by ignoring further calls after
-     * it's destroyed.
-     *
-     * <p>It's needed becase {@link #onCancel(IntentSender)} is always called when the Save UI
-     * dialog is dismissed.
-     */
     private class OneTimeListener implements OnSaveListener {
 
         private final OnSaveListener mRealListener;
@@ -103,6 +96,7 @@ final class SaveUi {
             if (mDone) {
                 return;
             }
+            mDone = true;
             mRealListener.onSave();
         }
 
@@ -112,6 +106,7 @@ final class SaveUi {
             if (mDone) {
                 return;
             }
+            mDone = true;
             mRealListener.onCancel(listener);
         }
 

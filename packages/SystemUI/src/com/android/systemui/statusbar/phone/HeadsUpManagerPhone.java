@@ -21,22 +21,15 @@ import android.annotation.Nullable;
 import android.content.Context;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.graphics.Rect;
-import android.graphics.Region;
-import android.graphics.Region.Op;
 import android.support.v4.util.ArraySet;
 import android.util.Log;
 import android.util.Pools;
-import android.view.DisplayCutout;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewTreeObserver;
-import android.view.ViewTreeObserver.InternalInsetsInfo;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.systemui.Dumpable;
 import com.android.systemui.R;
-import com.android.systemui.ScreenDecorations;
 import com.android.systemui.statusbar.ExpandableNotificationRow;
 import com.android.systemui.statusbar.NotificationData;
 import com.android.systemui.statusbar.StatusBarState;
@@ -48,7 +41,6 @@ import com.android.systemui.statusbar.policy.OnHeadsUpChangedListener;
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Stack;
 
 /**
@@ -68,7 +60,6 @@ public class HeadsUpManagerPhone extends HeadsUpManager implements Dumpable,
 
     private int mStatusBarHeight;
     private int mHeadsUpInset;
-    private int mDisplayCutoutTouchableRegionSize;
     private boolean mTrackingHeadsUp;
     private HashSet<String> mSwipedOutKeys = new HashSet<>();
     private HashSet<NotificationData.Entry> mEntriesToRemoveAfterExpand = new HashSet<>();
@@ -129,18 +120,11 @@ public class HeadsUpManagerPhone extends HeadsUpManager implements Dumpable,
                 com.android.internal.R.dimen.status_bar_height);
         mHeadsUpInset = mStatusBarHeight + resources.getDimensionPixelSize(
                 R.dimen.heads_up_status_bar_padding);
-        mDisplayCutoutTouchableRegionSize = resources.getDimensionPixelSize(
-                R.dimen.display_cutout_touchable_region_size);
     }
 
     @Override
     public void onDensityOrFontScaleChanged() {
         super.onDensityOrFontScaleChanged();
-        initResources();
-    }
-
-    @Override
-    public void onOverlayChanged() {
         initResources();
     }
 
@@ -317,30 +301,10 @@ public class HeadsUpManagerPhone extends HeadsUpManager implements Dumpable,
 
             info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION);
             info.touchableRegion.set(minX, 0, maxX, mHeadsUpInset + height);
-        } else {
-            setCollapsedTouchableInsets(info);
+        } else if (mHeadsUpGoingAway || mWaitingOnCollapseWhenGoingAway) {
+            info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION);
+            info.touchableRegion.set(0, 0, mStatusBarWindowView.getWidth(), mStatusBarHeight);
         }
-    }
-
-    private void setCollapsedTouchableInsets(ViewTreeObserver.InternalInsetsInfo info) {
-        info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION);
-        info.touchableRegion.set(0, 0, mStatusBarWindowView.getWidth(), mStatusBarHeight);
-        updateRegionForNotch(info.touchableRegion);
-    }
-
-    private void updateRegionForNotch(Region region) {
-        DisplayCutout cutout = mStatusBarWindowView.getRootWindowInsets().getDisplayCutout();
-        if (cutout == null) {
-            return;
-        }
-
-        // Expand touchable region such that we also catch touches that just start below the notch
-        // area.
-        Region bounds = ScreenDecorations.DisplayCutoutView.boundsFromDirection(
-                cutout, Gravity.TOP);
-        bounds.translate(0, mDisplayCutoutTouchableRegionSize);
-        region.op(bounds, Op.UNION);
-        bounds.recycle();
     }
 
     @Override
@@ -439,8 +403,7 @@ public class HeadsUpManagerPhone extends HeadsUpManager implements Dumpable,
 
     private void updateTouchableRegionListener() {
         boolean shouldObserve = hasPinnedHeadsUp() || mHeadsUpGoingAway
-                || mWaitingOnCollapseWhenGoingAway
-                || mStatusBarWindowView.getRootWindowInsets().getDisplayCutout() != null;
+                || mWaitingOnCollapseWhenGoingAway;
         if (shouldObserve == mIsObserving) {
             return;
         }

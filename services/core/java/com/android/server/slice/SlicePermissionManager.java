@@ -175,24 +175,18 @@ public class SlicePermissionManager implements DirtyTracker {
                 handlePersist();
             }
             for (String file : new File(mSliceDir.getAbsolutePath()).list()) {
+                if (file.isEmpty()) continue;
                 try (ParserHolder parser = getParser(file)) {
-                    Persistable p = null;
-                    while (parser.parser.getEventType() != XmlPullParser.END_DOCUMENT) {
-                        if (parser.parser.getEventType() == XmlPullParser.START_TAG) {
-                            if (SliceClientPermissions.TAG_CLIENT.equals(parser.parser.getName())) {
-                                p = SliceClientPermissions.createFrom(parser.parser, tracker);
-                            } else {
-                                p = SliceProviderPermissions.createFrom(parser.parser, tracker);
-                            }
-                            break;
-                        }
+                    Persistable p;
+                    while (parser.parser.getEventType() != XmlPullParser.START_TAG) {
                         parser.parser.next();
                     }
-                    if (p != null) {
-                        p.writeTo(out);
+                    if (SliceClientPermissions.TAG_CLIENT.equals(parser.parser.getName())) {
+                        p = SliceClientPermissions.createFrom(parser.parser, tracker);
                     } else {
-                        Slog.w(TAG, "Invalid or empty slice permissions file: " + file);
+                        p = SliceProviderPermissions.createFrom(parser.parser, tracker);
                     }
+                    p.writeTo(out);
                 }
             }
 
@@ -321,8 +315,7 @@ public class SlicePermissionManager implements DirtyTracker {
         return new AtomicFile(new File(mSliceDir, fileName));
     }
 
-    @VisibleForTesting
-    void handlePersist() {
+    private void handlePersist() {
         synchronized (this) {
             for (Persistable persistable : mDirty) {
                 AtomicFile file = getFile(persistable.getFileName());
@@ -342,19 +335,13 @@ public class SlicePermissionManager implements DirtyTracker {
 
                     out.flush();
                     file.finishWrite(stream);
-                } catch (IOException | XmlPullParserException | RuntimeException e) {
+                } catch (IOException | XmlPullParserException e) {
                     Slog.w(TAG, "Failed to save access file, restoring backup", e);
                     file.failWrite(stream);
                 }
             }
             mDirty.clear();
         }
-    }
-
-    // use addPersistableDirty(); this is just for tests
-    @VisibleForTesting
-    void addDirtyImmediate(Persistable obj) {
-        mDirty.add(obj);
     }
 
     private void handleRemove(PkgUser pkgUser) {

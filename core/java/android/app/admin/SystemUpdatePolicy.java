@@ -76,7 +76,9 @@ import java.util.stream.Collectors;
  * </code></pre>
  *
  * <h3>Developer guide</h3>
- * To learn more, read <a href="{@docRoot}work/dpc/system-updates">Manage system updates</a>.
+ * To learn more about managing system updates, read
+ * <a href="{@docRoot}/work/dpc/security.html#control_remote_software_updates">Control remote
+ * software updates</a>.
  *
  * @see DevicePolicyManager#setSystemUpdatePolicy
  * @see DevicePolicyManager#getSystemUpdatePolicy

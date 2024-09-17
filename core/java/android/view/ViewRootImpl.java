@@ -745,7 +745,10 @@ public final class ViewRootImpl implements ViewParent,
                 // manager, to make sure we do the relayout before receiving
                 // any other events from the system.
                 requestLayout();
-		mInputChannel = new InputChannel();
+                if ((mWindowAttributes.inputFeatures
+                        & WindowManager.LayoutParams.INPUT_FEATURE_NO_INPUT_CHANNEL) == 0) {
+                    mInputChannel = new InputChannel();
+                }
                 mForceDecorViewVisibility = (mWindowAttributes.privateFlags
                         & PRIVATE_FLAG_FORCE_DECOR_VIEW_VISIBILITY) != 0;
                 try {
@@ -835,7 +838,7 @@ public final class ViewRootImpl implements ViewParent,
                     mInputQueueCallback =
                         ((RootViewSurfaceTaker)view).willYouTakeTheInputQueue();
                 }
-                if (mInputChannel.isValid()) {
+                if (mInputChannel != null) {
                     if (mInputQueueCallback != null) {
                         mInputQueue = new InputQueue();
                         mInputQueueCallback.onInputQueueCreated(mInputQueue);
@@ -1339,6 +1342,7 @@ public final class ViewRootImpl implements ViewParent,
                 renderer.setStopped(mStopped);
             }
             if (!mStopped) {
+                mNewSurfaceNeeded = true;
                 scheduleTraversals();
             } else {
                 if (renderer != null) {
@@ -1641,6 +1645,7 @@ public final class ViewRootImpl implements ViewParent,
 
     private Rect ensureInsetsNonNegative(Rect insets, String kind) {
         if (insets.left < 0  || insets.top < 0  || insets.right < 0  || insets.bottom < 0) {
+            Log.wtf(mTag, "Negative " + kind + "Insets: " + insets + ", mFirst=" + mFirst);
             return new Rect(Math.max(0, insets.left),
                     Math.max(0, insets.top),
                     Math.max(0, insets.right),
@@ -1749,7 +1754,11 @@ public final class ViewRootImpl implements ViewParent,
             // PixelFormat.hasAlpha(lp.format) || lp.format == PixelFormat.RGBX_8888
             // However, windows are now always 32 bits by default, so choose 32 bits
             mAttachInfo.mUse32BitDrawingCache = true;
-            mAttachInfo.mHasWindowFocus = false;
+            // The mAttachInfo.mHasWindowFocus's value is false by default, so there is
+            // No need to update it again in the first draw process. When the new window
+            // Is changed focus before it is drawn, this can even result in a circumstance
+            // Wherethe new window has no focus and can't dispatch input events.
+            //mAttachInfo.mHasWindowFocus = false;
             mAttachInfo.mWindowVisibility = viewVisibility;
             mAttachInfo.mRecomputeGlobalAttributes = false;
             mLastConfigurationFromResources.setTo(config);
@@ -2090,7 +2099,8 @@ public final class ViewRootImpl implements ViewParent,
                         // all at once.
                         newSurface = true;
                         mFullRedrawNeeded = true;
-                        mPreviousTransparentRegion.setEmpty();
+                        //remove it as transparent region error after resume
+                        //mPreviousTransparentRegion.setEmpty();
 
                         // Only initialize up-front if transparent regions are not
                         // requested, otherwise defer to see if the entire window
@@ -2103,7 +2113,7 @@ public final class ViewRootImpl implements ViewParent,
                                         & View.PFLAG_REQUEST_TRANSPARENT_REGIONS) == 0) {
                                     // Don't pre-allocate if transparent regions
                                     // are requested as they may not be needed
-                                    mAttachInfo.mThreadedRenderer.allocateBuffers(mSurface);
+                                    mSurface.allocateBuffers();
                                 }
                             } catch (OutOfResourcesException e) {
                                 handleOutOfResourcesException(e);

@@ -257,8 +257,7 @@ public class ImageSpan extends DynamicDrawableSpan {
      * Returns the source string that was saved during construction.
      *
      * @return the source string that was saved during construction
-     * @see #ImageSpan(Drawable, String)
-     * @see #ImageSpan(Context, Uri)
+     * @see #ImageSpan(Drawable, String) and this{@link #ImageSpan(Context, Uri)}
      */
     @Nullable
     public String getSource() {

@@ -29,7 +29,6 @@ import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Region;
-import android.graphics.Region.Op;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.TextUtils;
@@ -325,11 +324,15 @@ public final class DisplayCutout {
      *
      * @hide
      */
-    @VisibleForTesting
     public static DisplayCutout fromBoundingRect(int left, int top, int right, int bottom) {
-        Region r = Region.obtain();
-        r.set(left, top, right, bottom);
-        return fromBounds(r);
+        Path path = new Path();
+        path.reset();
+        path.moveTo(left, top);
+        path.lineTo(left, bottom);
+        path.lineTo(right, bottom);
+        path.lineTo(right, top);
+        path.close();
+        return fromBounds(path);
     }
 
     /**
@@ -337,19 +340,26 @@ public final class DisplayCutout {
      *
      * @hide
      */
-    public static DisplayCutout fromBounds(Region region) {
-        return new DisplayCutout(ZERO_RECT, region, false /* copyArguments */);
+    public static DisplayCutout fromBounds(Path path) {
+        RectF clipRect = new RectF();
+        path.computeBounds(clipRect, false /* unused */);
+        Region clipRegion = Region.obtain();
+        clipRegion.set((int) clipRect.left, (int) clipRect.top,
+                (int) clipRect.right, (int) clipRect.bottom);
+
+        Region bounds = new Region();
+        bounds.setPath(path, clipRegion);
+        clipRegion.recycle();
+        return new DisplayCutout(ZERO_RECT, bounds, false /* copyArguments */);
     }
 
     /**
-     * Creates the display cutout according to
-     * @android:string/config_mainBuiltInDisplayCutoutRectApproximation, which is the closest
-     * rectangle-base approximation of the cutout.
+     * Creates the bounding path according to @android:string/config_mainBuiltInDisplayCutout.
      *
      * @hide
      */
-    public static DisplayCutout fromResourcesRectApproximation(Resources res, int displayWidth, int displayHeight) {
-        return fromSpec(res.getString(R.string.config_mainBuiltInDisplayCutoutRectApproximation),
+    public static DisplayCutout fromResources(Resources res, int displayWidth, int displayHeight) {
+        return fromSpec(res.getString(R.string.config_mainBuiltInDisplayCutout),
                 displayWidth, displayHeight, DENSITY_DEVICE_STABLE / (float) DENSITY_DEFAULT);
     }
 
@@ -359,8 +369,7 @@ public final class DisplayCutout {
      * @hide
      */
     public static Path pathFromResources(Resources res, int displayWidth, int displayHeight) {
-        return pathAndDisplayCutoutFromSpec(
-                res.getString(R.string.config_mainBuiltInDisplayCutout),
+        return pathAndDisplayCutoutFromSpec(res.getString(R.string.config_mainBuiltInDisplayCutout),
                 displayWidth, displayHeight, DENSITY_DEVICE_STABLE / (float) DENSITY_DEFAULT).first;
     }
 
@@ -408,7 +417,6 @@ public final class DisplayCutout {
         }
 
         final Path p;
-        final Region r = Region.obtain();
         try {
             p = PathParser.createPathFromPathData(spec);
         } catch (Throwable e) {
@@ -423,11 +431,6 @@ public final class DisplayCutout {
         m.postTranslate(offsetX, 0);
         p.transform(m);
 
-        final Rect tmpRect = new Rect();
-        toRectAndAddToRegion(p, r, tmpRect);
-        final int topInset = tmpRect.bottom;
-
-        final int bottomInset;
         if (bottomSpec != null) {
             final Path bottomPath;
             try {
@@ -440,17 +443,9 @@ public final class DisplayCutout {
             m.postTranslate(0, displayHeight);
             bottomPath.transform(m);
             p.addPath(bottomPath);
-            toRectAndAddToRegion(bottomPath, r, tmpRect);
-            bottomInset = displayHeight - tmpRect.top;
-        } else {
-            bottomInset = 0;
         }
 
-        // Reuse tmpRect as the inset rect we store into the DisplayCutout instance.
-        tmpRect.set(0, topInset, 0, bottomInset);
-        final DisplayCutout cutout = new DisplayCutout(tmpRect, r, false /* copyArguments */);
-
-        final Pair<Path, DisplayCutout> result = new Pair<>(p, cutout);
+        final Pair<Path, DisplayCutout> result = new Pair<>(p, fromBounds(p));
         synchronized (CACHE_LOCK) {
             sCachedSpec = spec;
             sCachedDisplayWidth = displayWidth;
@@ -459,13 +454,6 @@ public final class DisplayCutout {
             sCachedCutout = result;
         }
         return result;
-    }
-
-    private static void toRectAndAddToRegion(Path p, Region inoutRegion, Rect inoutRect) {
-        final RectF rectF = new RectF();
-        p.computeBounds(rectF, false /* unused */);
-        rectF.round(inoutRect);
-        inoutRegion.op(inoutRect, Op.UNION);
     }
 
     private static Region boundingRectsToRegion(List<Rect> rects) {

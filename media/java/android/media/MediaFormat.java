@@ -143,7 +143,7 @@ public final class MediaFormat {
      * MIME type for HEIF still image data encoded in HEVC.
      *
      * To decode such an image, {@link MediaCodec} decoder for
-     * {@link #MIMETYPE_VIDEO_HEVC} shall be used. The client needs to form
+     * {@ #MIMETYPE_VIDEO_HEVC} shall be used. The client needs to form
      * the correct {@link #MediaFormat} based on additional information in
      * the track format, and send it to {@link MediaCodec#configure}.
      *

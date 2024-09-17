@@ -26,8 +26,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.Nullable;
-import android.hardware.power.V1_0.PowerHint;
-import android.os.PowerManagerInternal;
 import android.util.ArrayMap;
 import android.view.Choreographer;
 import android.view.SurfaceControl;
@@ -59,7 +57,6 @@ class SurfaceAnimationRunner {
     private final AnimationHandler mAnimationHandler;
     private final Transaction mFrameTransaction;
     private final AnimatorFactory mAnimatorFactory;
-    private final PowerManagerInternal mPowerManagerInternal;
     private boolean mApplyScheduled;
 
     @GuardedBy("mLock")
@@ -73,15 +70,13 @@ class SurfaceAnimationRunner {
     @GuardedBy("mLock")
     private boolean mAnimationStartDeferred;
 
-    SurfaceAnimationRunner(PowerManagerInternal powerManagerInternal) {
-        this(null /* callbackProvider */, null /* animatorFactory */, new Transaction(),
-                powerManagerInternal);
+    SurfaceAnimationRunner() {
+        this(null /* callbackProvider */, null /* animatorFactory */, new Transaction());
     }
 
     @VisibleForTesting
     SurfaceAnimationRunner(@Nullable AnimationFrameCallbackProvider callbackProvider,
-            AnimatorFactory animatorFactory, Transaction frameTransaction,
-            PowerManagerInternal powerManagerInternal) {
+            AnimatorFactory animatorFactory, Transaction frameTransaction) {
         SurfaceAnimationThread.getHandler().runWithScissors(() -> mChoreographer = getSfInstance(),
                 0 /* timeout */);
         mFrameTransaction = frameTransaction;
@@ -92,7 +87,6 @@ class SurfaceAnimationRunner {
         mAnimatorFactory = animatorFactory != null
                 ? animatorFactory
                 : SfValueAnimator::new;
-        mPowerManagerInternal = powerManagerInternal;
     }
 
     /**
@@ -237,7 +231,6 @@ class SurfaceAnimationRunner {
         synchronized (mLock) {
             startPendingAnimationsLocked();
         }
-        mPowerManagerInternal.powerHint(PowerHint.INTERACTION, 0);
     }
 
     private void scheduleApplyTransaction() {

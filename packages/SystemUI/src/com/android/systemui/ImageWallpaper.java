@@ -290,7 +290,7 @@ public class ImageWallpaper extends WallpaperService {
                         || dh != mLastSurfaceHeight;
 
                 boolean redrawNeeded = surfaceDimensionsChanged || newRotation != mLastRotation
-                        || mSurfaceRedrawNeeded || mNeedsDrawAfterLoadingWallpaper;
+                        || mSurfaceRedrawNeeded;
                 if (!redrawNeeded && !mOffsetsChanged) {
                     if (DEBUG) {
                         Log.d(TAG, "Suppressed drawFrame since redraw is not needed "

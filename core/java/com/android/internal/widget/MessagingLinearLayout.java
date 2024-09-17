@@ -111,16 +111,14 @@ public class MessagingLinearLayout extends ViewGroup {
             final int childHeight = child.getMeasuredHeight();
             int newHeight = Math.max(totalHeight, totalHeight + childHeight + lp.topMargin +
                     lp.bottomMargin + spacing);
+            first = false;
             int measureType = MessagingChild.MEASURED_NORMAL;
             if (messagingChild != null) {
                 measureType = messagingChild.getMeasuredType();
                 linesRemaining -= messagingChild.getConsumedLines();
             }
-
-            // We never measure the first item as too small, we want to at least show something.
-            boolean isTooSmall = measureType == MessagingChild.MEASURED_TOO_SMALL && !first;
-            boolean isShortened = measureType == MessagingChild.MEASURED_SHORTENED
-                    || measureType == MessagingChild.MEASURED_TOO_SMALL && first;
+            boolean isShortened = measureType == MessagingChild.MEASURED_SHORTENED;
+            boolean isTooSmall = measureType == MessagingChild.MEASURED_TOO_SMALL;
             if (newHeight <= targetHeight && !isTooSmall) {
                 totalHeight = newHeight;
                 measuredWidth = Math.max(measuredWidth,
@@ -133,7 +131,6 @@ public class MessagingLinearLayout extends ViewGroup {
             } else {
                 break;
             }
-            first = false;
         }
 
         setMeasuredDimension(

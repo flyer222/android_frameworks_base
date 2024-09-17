@@ -76,6 +76,7 @@ import com.android.internal.util.MemInfoReader;
 import com.android.internal.util.Preconditions;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -557,6 +558,9 @@ final class ActivityManagerShellCommand extends ShellCommand {
                 if (result.who != null) {
                     pw.println("Activity: " + result.who.flattenToShortString());
                 }
+                if (result.thisTime >= 0) {
+                    pw.println("ThisTime: " + result.thisTime);
+                }
                 if (result.totalTime >= 0) {
                     pw.println("TotalTime: " + result.totalTime);
                 }
@@ -718,7 +722,8 @@ final class ActivityManagerShellCommand extends ShellCommand {
             return -1;
         }
 
-        // Writes an error message to stderr on failure
+        File file = new File(filename);
+        file.delete();
         ParcelFileDescriptor fd = openFileForSystem(filename, "w");
         if (fd == null) {
             return -1;
@@ -869,7 +874,8 @@ final class ActivityManagerShellCommand extends ShellCommand {
         String process = getNextArgRequired();
         String heapFile = getNextArgRequired();
 
-        // Writes an error message to stderr on failure
+        File file = new File(heapFile);
+        file.delete();
         ParcelFileDescriptor fd = openFileForSystem(heapFile, "w");
         if (fd == null) {
             return -1;
@@ -984,7 +990,7 @@ final class ActivityManagerShellCommand extends ShellCommand {
         } catch (NumberFormatException e) {
             packageName = arg;
         }
-        mInterface.crashApplication(-1, pid, packageName, userId, "shell-induced crash", false);
+        mInterface.crashApplication(-1, pid, packageName, userId, "shell-induced crash");
         return 0;
     }
 
@@ -2838,7 +2844,6 @@ final class ActivityManagerShellCommand extends ShellCommand {
             pw.println("  --checkin: output checkin format, resetting data.");
             pw.println("  --C: output checkin format, not resetting data.");
             pw.println("  --proto: output dump in protocol buffer format.");
-            pw.println("  --autofill: dump just the autofill-related state of an activity");
         } else {
             pw.println("Activity manager (activity) commands:");
             pw.println("  help");

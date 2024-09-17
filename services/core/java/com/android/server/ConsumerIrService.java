@@ -19,7 +19,6 @@ package com.android.server;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.hardware.IConsumerIrService;
-import android.media.AudioSystem;
 import android.os.PowerManager;
 import android.util.Slog;
 
@@ -37,7 +36,6 @@ public class ConsumerIrService extends IConsumerIrService.Stub {
     private final Context mContext;
     private final PowerManager.WakeLock mWakeLock;
     private final boolean mHasNativeHal;
-    private final String mParameter;
     private final Object mHalLock = new Object();
 
     ConsumerIrService(Context context) {
@@ -55,7 +53,6 @@ public class ConsumerIrService extends IConsumerIrService.Stub {
         } else if (mHasNativeHal) {
             throw new RuntimeException("IR HAL present, but FEATURE_CONSUMER_IR is not set!");
         }
-        mParameter = AudioSystem.getParameters("audio_capability#irda_support");
     }
 
     @Override
@@ -94,13 +91,11 @@ public class ConsumerIrService extends IConsumerIrService.Stub {
 
         // Right now there is no mechanism to ensure fair queing of IR requests
         synchronized (mHalLock) {
-            setStartTransmitParameter();
             int err = halTransmit(carrierFrequency, pattern);
 
             if (err < 0) {
                 Slog.e(TAG, "Error transmitting: " + err);
             }
-            setEndTransmitParameter();
         }
     }
 
@@ -115,18 +110,6 @@ public class ConsumerIrService extends IConsumerIrService.Stub {
 
         synchronized(mHalLock) {
             return halGetCarrierFrequencies();
-        }
-    }
-
-    private void setStartTransmitParameter() {
-        if (mParameter != null && mParameter.contains("true")) {
-            AudioSystem.setParameters("ir_trans=on");
-        }
-    }
-
-    private void setEndTransmitParameter() {
-        if (mParameter != null && mParameter.contains("true")) {
-            AudioSystem.setParameters("ir_trans=off");
         }
     }
 }

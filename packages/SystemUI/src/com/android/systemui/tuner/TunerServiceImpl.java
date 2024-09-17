@@ -24,7 +24,6 @@ import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.UserHandle;
 import android.os.UserManager;
 import android.provider.Settings;
 import android.provider.Settings.Secure;
@@ -33,21 +32,12 @@ import android.util.ArrayMap;
 import android.util.ArraySet;
 
 import com.android.internal.util.ArrayUtils;
-import com.android.systemui.BatteryMeterView;
 import com.android.systemui.DemoMode;
 import com.android.systemui.Dependency;
 import com.android.systemui.qs.QSTileHost;
 import com.android.systemui.settings.CurrentUserTracker;
-import com.android.systemui.statusbar.phone.ClockController;
-import com.android.systemui.statusbar.phone.NavigationBarView;
-import com.android.systemui.statusbar.phone.NotificationPanelView;
-import com.android.systemui.statusbar.phone.StatusBar;
 import com.android.systemui.statusbar.phone.StatusBarIconController;
-import com.android.systemui.statusbar.policy.Clock;
 import com.android.systemui.util.leak.LeakDetector;
-import com.android.systemui.volume.VolumeDialogImpl;
-
-import lineageos.providers.LineageSettings;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -63,19 +53,8 @@ public class TunerServiceImpl extends TunerService {
     // Things that use the tunable infrastructure but are now real user settings and
     // shouldn't be reset with tuner settings.
     private static final String[] RESET_BLACKLIST = new String[] {
-            BatteryMeterView.STATUS_BAR_BATTERY_STYLE,
-            Clock.CLOCK_STYLE,
-            ClockController.CLOCK_POSITION,
-            NavigationBarView.NAVIGATION_BAR_MENU_ARROW_KEYS,
-            NotificationPanelView.DOUBLE_TAP_SLEEP_GESTURE,
-            NotificationPanelView.STATUS_BAR_QUICK_QS_PULLDOWN,
             QSTileHost.TILES_SETTING,
-            Settings.Secure.DOZE_ALWAYS_ON,
-            StatusBar.BERRY_GLOBAL_STYLE,
-            StatusBar.FORCE_SHOW_NAVBAR,
-            StatusBar.SCREEN_BRIGHTNESS_MODE,
-            StatusBar.STATUS_BAR_BRIGHTNESS_CONTROL,
-            VolumeDialogImpl.SETTING_VOLUME_PANEL_ON_LEFT,
+            Settings.Secure.DOZE_ALWAYS_ON
     };
 
     private final Observer mObserver = new Observer();
@@ -145,116 +124,31 @@ public class TunerServiceImpl extends TunerService {
         setValue(TUNER_VERSION, newVersion);
     }
 
-    private boolean isLineageGlobal(String key) {
-        return key.startsWith("lineageglobal:");
-    }
-
-    private boolean isLineageSystem(String key) {
-        return key.startsWith("lineagesystem:");
-    }
-
-    private boolean isLineageSecure(String key) {
-        return key.startsWith("lineagesecure:");
-    }
-
-    private boolean isSystem(String key) {
-        return key.startsWith("system:");
-    }
-
-    private String chomp(String key) {
-        return key.replaceFirst("^(lineageglobal|lineagesecure|lineagesystem|system):", "");
-    }
-
     @Override
     public String getValue(String setting) {
-        if (isLineageGlobal(setting)) {
-            return LineageSettings.Global.getString(mContentResolver, chomp(setting));
-        } else if (isLineageSecure(setting)) {
-            return LineageSettings.Secure.getStringForUser(
-                    mContentResolver, chomp(setting), mCurrentUser);
-        } else if (isLineageSystem(setting)) {
-            return LineageSettings.System.getStringForUser(
-                    mContentResolver, chomp(setting), mCurrentUser);
-        } else if (isSystem(setting)) {
-            return Settings.System.getStringForUser(
-                    mContentResolver, chomp(setting), mCurrentUser);
-        } else {
-            return Settings.Secure.getStringForUser(mContentResolver, setting, mCurrentUser);
-        }
+        return Settings.Secure.getStringForUser(mContentResolver, setting, mCurrentUser);
     }
 
     @Override
     public void setValue(String setting, String value) {
-        if (isLineageGlobal(setting)) {
-            LineageSettings.Global.putString(mContentResolver, chomp(setting), value);
-        } else if (isLineageSecure(setting)) {
-            LineageSettings.Secure.putStringForUser(
-                    mContentResolver, chomp(setting), value, mCurrentUser);
-        } else if (isLineageSystem(setting)) {
-            LineageSettings.System.putStringForUser(
-                    mContentResolver, chomp(setting), value, mCurrentUser);
-        } else if (isSystem(setting)) {
-            Settings.System.putStringForUser(
-                    mContentResolver, chomp(setting), value, mCurrentUser);
-        } else {
-            Settings.Secure.putStringForUser(mContentResolver, setting, value, mCurrentUser);
-        }
+         Settings.Secure.putStringForUser(mContentResolver, setting, value, mCurrentUser);
     }
 
     @Override
     public int getValue(String setting, int def) {
-        if (isLineageGlobal(setting)) {
-            return LineageSettings.Global.getInt(mContentResolver, chomp(setting), def);
-        } else if (isLineageSecure(setting)) {
-            return LineageSettings.Secure.getIntForUser(
-                    mContentResolver, chomp(setting), def, mCurrentUser);
-        } else if (isLineageSystem(setting)) {
-            return LineageSettings.System.getIntForUser(
-                    mContentResolver, chomp(setting), def, mCurrentUser);
-        } else if (isSystem(setting)) {
-            return Settings.System.getIntForUser(
-                    mContentResolver, chomp(setting), def, mCurrentUser);
-        } else {
-            return Settings.Secure.getIntForUser(mContentResolver, setting, def, mCurrentUser);
-        }
+        return Settings.Secure.getIntForUser(mContentResolver, setting, def, mCurrentUser);
     }
 
     @Override
     public String getValue(String setting, String def) {
-        String ret;
-        if (isLineageGlobal(setting)) {
-            ret = LineageSettings.Global.getString(mContentResolver, chomp(setting));
-        } else if (isLineageSecure(setting)) {
-            ret = LineageSettings.Secure.getStringForUser(
-                    mContentResolver, chomp(setting), mCurrentUser);
-        } else if (isLineageSystem(setting)) {
-            ret = LineageSettings.System.getStringForUser(
-                    mContentResolver, chomp(setting), mCurrentUser);
-        } else if (isSystem(setting)) {
-            ret = Settings.System.getStringForUser(
-                    mContentResolver, chomp(setting), mCurrentUser);
-        } else {
-            ret = Secure.getStringForUser(mContentResolver, setting, mCurrentUser);
-        }
+        String ret = Secure.getStringForUser(mContentResolver, setting, mCurrentUser);
         if (ret == null) return def;
         return ret;
     }
 
     @Override
     public void setValue(String setting, int value) {
-        if (isLineageGlobal(setting)) {
-            LineageSettings.Global.putInt(mContentResolver, chomp(setting), value);
-        } else if (isLineageSecure(setting)) {
-            LineageSettings.Secure.putIntForUser(
-                    mContentResolver, chomp(setting), value, mCurrentUser);
-        } else if (isLineageSystem(setting)) {
-            LineageSettings.System.putIntForUser(
-                    mContentResolver, chomp(setting), value, mCurrentUser);
-        } else if (isSystem(setting)) {
-            Settings.System.putIntForUser(mContentResolver, chomp(setting), value, mCurrentUser);
-        } else {
-            Settings.Secure.putIntForUser(mContentResolver, setting, value, mCurrentUser);
-        }
+         Settings.Secure.putIntForUser(mContentResolver, setting, value, mCurrentUser);
     }
 
     @Override
@@ -273,25 +167,13 @@ public class TunerServiceImpl extends TunerService {
             mTunables.add(tunable);
             Dependency.get(LeakDetector.class).trackCollection(mTunables, "TunerService.mTunables");
         }
-        final Uri uri;
-        if (isLineageGlobal(key)) {
-            uri = LineageSettings.Global.getUriFor(chomp(key));
-        } else if (isLineageSecure(key)) {
-            uri = LineageSettings.Secure.getUriFor(chomp(key));
-        } else if (isLineageSystem(key)) {
-            uri = LineageSettings.System.getUriFor(chomp(key));
-        } else if (isSystem(key)) {
-            uri = Settings.System.getUriFor(chomp(key));
-        } else {
-            uri = Settings.Secure.getUriFor(key);
-        }
+        Uri uri = Settings.Secure.getUriFor(key);
         if (!mListeningUris.containsKey(uri)) {
             mListeningUris.put(uri, key);
-            mContentResolver.registerContentObserver(uri, false, mObserver,
-                    isLineageGlobal(key) ? UserHandle.USER_ALL : mCurrentUser);
+            mContentResolver.registerContentObserver(uri, false, mObserver, mCurrentUser);
         }
         // Send the first state.
-        String value = getValue(key);
+        String value = Settings.Secure.getStringForUser(mContentResolver, key, mCurrentUser);
         tunable.onTuningChanged(key, value);
     }
 
@@ -311,9 +193,7 @@ public class TunerServiceImpl extends TunerService {
         }
         mContentResolver.unregisterContentObserver(mObserver);
         for (Uri uri : mListeningUris.keySet()) {
-            String key = mListeningUris.get(uri);
-            mContentResolver.registerContentObserver(uri, false, mObserver,
-                    isLineageGlobal(key) ? UserHandle.USER_ALL : mCurrentUser);
+            mContentResolver.registerContentObserver(uri, false, mObserver, mCurrentUser);
         }
     }
 
@@ -323,7 +203,7 @@ public class TunerServiceImpl extends TunerService {
         if (tunables == null) {
             return;
         }
-        String value = getValue(key);
+        String value = Settings.Secure.getStringForUser(mContentResolver, key, mCurrentUser);
         for (Tunable tunable : tunables) {
             tunable.onTuningChanged(key, value);
         }
@@ -331,7 +211,8 @@ public class TunerServiceImpl extends TunerService {
 
     private void reloadAll() {
         for (String key : mTunableLookup.keySet()) {
-            String value = getValue(key);
+            String value = Settings.Secure.getStringForUser(mContentResolver, key,
+                    mCurrentUser);
             for (Tunable tunable : mTunableLookup.get(key)) {
                 tunable.onTuningChanged(key, value);
             }
@@ -350,7 +231,7 @@ public class TunerServiceImpl extends TunerService {
             if (ArrayUtils.contains(RESET_BLACKLIST, key)) {
                 continue;
             }
-            setValue(key, null);
+            Settings.Secure.putString(mContentResolver, key, null);
         }
     }
 
@@ -361,8 +242,7 @@ public class TunerServiceImpl extends TunerService {
 
         @Override
         public void onChange(boolean selfChange, Uri uri, int userId) {
-            String key = mListeningUris.get(uri);
-            if (userId == ActivityManager.getCurrentUser() || isLineageGlobal(key)) {
+            if (userId == ActivityManager.getCurrentUser()) {
                 reloadSetting(uri);
             }
         }

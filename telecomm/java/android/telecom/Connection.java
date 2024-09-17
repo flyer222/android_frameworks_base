@@ -45,7 +45,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.nio.channels.Channels;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -854,8 +853,6 @@ public abstract class Connection extends Conferenceable {
         private final OutputStreamWriter mPipeToInCall;
         private final ParcelFileDescriptor mFdFromInCall;
         private final ParcelFileDescriptor mFdToInCall;
-
-        private final FileInputStream mFromInCallFileInputStream;
         private char[] mReadBuffer = new char[READ_BUFFER_SIZE];
 
         /**
@@ -864,11 +861,8 @@ public abstract class Connection extends Conferenceable {
         public RttTextStream(ParcelFileDescriptor toInCall, ParcelFileDescriptor fromInCall) {
             mFdFromInCall = fromInCall;
             mFdToInCall = toInCall;
-            mFromInCallFileInputStream = new FileInputStream(fromInCall.getFileDescriptor());
-
-            // Wrap the FileInputStream in a Channel so that it's interruptible.
             mPipeFromInCall = new InputStreamReader(
-                    Channels.newInputStream(Channels.newChannel(mFromInCallFileInputStream)));
+                    new FileInputStream(fromInCall.getFileDescriptor()));
             mPipeToInCall = new OutputStreamWriter(
                     new FileOutputStream(toInCall.getFileDescriptor()));
         }
@@ -916,7 +910,7 @@ public abstract class Connection extends Conferenceable {
          * not entered any new text yet.
          */
         public String readImmediately() throws IOException {
-            if (mFromInCallFileInputStream.available() > 0) {
+            if (mPipeFromInCall.ready()) {
                 return read();
             } else {
                 return null;

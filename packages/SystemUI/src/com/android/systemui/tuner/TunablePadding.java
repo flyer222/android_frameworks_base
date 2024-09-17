@@ -51,9 +51,7 @@ public class TunablePadding implements Tunable {
     public void onTuningChanged(String key, String newValue) {
         int dimen = mDefaultSize;
         if (newValue != null) {
-            try {
-                dimen = (int) (Integer.parseInt(newValue) * mDensity);
-            } catch (NumberFormatException ex) {}
+            dimen = (int) (Integer.parseInt(newValue) * mDensity);
         }
         int left = mView.isLayoutRtl() ? FLAG_END : FLAG_START;
         int right = mView.isLayoutRtl() ? FLAG_START : FLAG_END;

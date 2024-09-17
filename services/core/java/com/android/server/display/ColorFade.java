@@ -46,7 +46,6 @@ import android.view.SurfaceSession;
 import libcore.io.Streams;
 
 import com.android.server.LocalServices;
-import com.android.server.policy.WindowManagerPolicy;
 
 /**
  * <p>
@@ -64,7 +63,7 @@ final class ColorFade {
 
     // The layer for the electron beam surface.
     // This is currently hardcoded to be one layer above the boot animation.
-    private static final int COLOR_FADE_LAYER = WindowManagerPolicy.COLOR_FADE_LAYER;
+    private static final int COLOR_FADE_LAYER = 0x40000001;
 
     // The number of frames to draw when preparing the animation so that it will
     // be ready to run smoothly.  We use 3 frames because we are triple-buffered.

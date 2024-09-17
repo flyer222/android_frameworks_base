@@ -108,23 +108,28 @@ public class VolumeDialogComponent implements VolumeComponent, TunerService.Tuna
 
     @Override
     public void onTuningChanged(String key, String newValue) {
-        boolean volumeDownToEnterSilent = mVolumePolicy.volumeDownToEnterSilent;
-        boolean volumeUpToExitSilent = mVolumePolicy.volumeUpToExitSilent;
-        boolean doNotDisturbWhenSilent = mVolumePolicy.doNotDisturbWhenSilent;
-
         if (VOLUME_DOWN_SILENT.equals(key)) {
-            volumeDownToEnterSilent =
-                TunerService.parseIntegerSwitch(newValue, DEFAULT_VOLUME_DOWN_TO_ENTER_SILENT);
+            final boolean volumeDownToEnterSilent = newValue != null
+                    ? Integer.parseInt(newValue) != 0
+                    : DEFAULT_VOLUME_DOWN_TO_ENTER_SILENT;
+            setVolumePolicy(volumeDownToEnterSilent,
+                    mVolumePolicy.volumeUpToExitSilent, mVolumePolicy.doNotDisturbWhenSilent,
+                    mVolumePolicy.vibrateToSilentDebounce);
         } else if (VOLUME_UP_SILENT.equals(key)) {
-            volumeUpToExitSilent =
-                TunerService.parseIntegerSwitch(newValue, DEFAULT_VOLUME_UP_TO_EXIT_SILENT);
+            final boolean volumeUpToExitSilent = newValue != null
+                    ? Integer.parseInt(newValue) != 0
+                    : DEFAULT_VOLUME_UP_TO_EXIT_SILENT;
+            setVolumePolicy(mVolumePolicy.volumeDownToEnterSilent,
+                    volumeUpToExitSilent, mVolumePolicy.doNotDisturbWhenSilent,
+                    mVolumePolicy.vibrateToSilentDebounce);
         } else if (VOLUME_SILENT_DO_NOT_DISTURB.equals(key)) {
-            doNotDisturbWhenSilent =
-                TunerService.parseIntegerSwitch(newValue, DEFAULT_DO_NOT_DISTURB_WHEN_SILENT);
+            final boolean doNotDisturbWhenSilent = newValue != null
+                    ? Integer.parseInt(newValue) != 0
+                    : DEFAULT_DO_NOT_DISTURB_WHEN_SILENT;
+            setVolumePolicy(mVolumePolicy.volumeDownToEnterSilent,
+                    mVolumePolicy.volumeUpToExitSilent, doNotDisturbWhenSilent,
+                    mVolumePolicy.vibrateToSilentDebounce);
         }
-
-        setVolumePolicy(volumeDownToEnterSilent, volumeUpToExitSilent, doNotDisturbWhenSilent,
-                mVolumePolicy.vibrateToSilentDebounce);
     }
 
     private void setVolumePolicy(boolean volumeDownToEnterSilent, boolean volumeUpToExitSilent,

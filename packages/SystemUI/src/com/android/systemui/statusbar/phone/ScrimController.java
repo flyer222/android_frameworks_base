@@ -1,6 +1,5 @@
 /*
  * Copyright (C) 2014 The Android Open Source Project
- * Copyright (C) 2019 The LineageOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +29,9 @@ import android.os.Handler;
 import android.os.Trace;
 import android.util.Log;
 import android.util.MathUtils;
+import android.view.Choreographer;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
@@ -42,11 +43,12 @@ import com.android.internal.colorextraction.ColorExtractor.OnColorsChangedListen
 import com.android.internal.graphics.ColorUtils;
 import com.android.internal.util.function.TriConsumer;
 import com.android.keyguard.KeyguardUpdateMonitor;
-import com.android.keyguard.KeyguardUpdateMonitorCallback;
 import com.android.systemui.Dependency;
 import com.android.systemui.Dumpable;
 import com.android.systemui.R;
 import com.android.systemui.colorextraction.SysuiColorExtractor;
+import com.android.systemui.statusbar.ExpandableNotificationRow;
+import com.android.systemui.statusbar.NotificationData;
 import com.android.systemui.statusbar.ScrimView;
 import com.android.systemui.statusbar.stack.ViewState;
 import com.android.systemui.util.AlarmTimeout;
@@ -105,8 +107,6 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
     private static final int TAG_START_ALPHA = R.id.scrim_alpha_start;
     private static final int TAG_END_ALPHA = R.id.scrim_alpha_end;
     private static final float NOT_INITIALIZED = -1;
-
-    private static final int SCRIM_DEFAULT_COLOR = Color.BLACK;     // Default scrim color
 
     private ScrimState mState = ScrimState.UNINITIALIZED;
     private final Context mContext;
@@ -185,10 +185,10 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
 
         mColorExtractor = Dependency.get(SysuiColorExtractor.class);
         mColorExtractor.addOnColorsChangedListener(this);
-        mLockColors = getDarkGradientColor(WallpaperManager.FLAG_LOCK,
-                true /* ignoreVisibility */);
-        mSystemColors = getDarkGradientColor(WallpaperManager.FLAG_SYSTEM,
-                true /* ignoreVisibility */);
+        mLockColors = mColorExtractor.getColors(WallpaperManager.FLAG_LOCK,
+                ColorExtractor.TYPE_DARK, true /* ignoreVisibility */);
+        mSystemColors = mColorExtractor.getColors(WallpaperManager.FLAG_SYSTEM,
+                ColorExtractor.TYPE_DARK, true /* ignoreVisibility */);
         mNeedsDrawableColorUpdate = true;
 
         final ScrimState[] states = ScrimState.values();
@@ -482,13 +482,21 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
         // Make sure we have the right gradients and their opacities will satisfy GAR.
         if (mNeedsDrawableColorUpdate) {
             mNeedsDrawableColorUpdate = false;
-            boolean isKeyguard = mKeyguardUpdateMonitor.isKeyguardVisible() && !mKeyguardOccluded;
-            GradientColors currentScrimColors = isKeyguard ? mLockColors : mSystemColors;
-            // Only animate scrim color if the scrim view is actually visible
-            boolean animateScrimInFront = mScrimInFront.getViewAlpha() != 0 && !mBlankScreen;
-            boolean animateScrimBehind = mScrimBehind.getViewAlpha() != 0 && !mBlankScreen;
-            mScrimInFront.setColors(currentScrimColors, animateScrimInFront);
-            mScrimBehind.setColors(currentScrimColors, animateScrimBehind);
+            final GradientColors currentScrimColors;
+            if (mState == ScrimState.KEYGUARD || mState == ScrimState.BOUNCER_SCRIMMED
+                    || mState == ScrimState.BOUNCER) {
+                // Always animate color changes if we're seeing the keyguard
+                mScrimInFront.setColors(mLockColors, true /* animated */);
+                mScrimBehind.setColors(mLockColors, true /* animated */);
+                currentScrimColors = mLockColors;
+            } else {
+                // Only animate scrim color if the scrim view is actually visible
+                boolean animateScrimInFront = mScrimInFront.getViewAlpha() != 0;
+                boolean animateScrimBehind = mScrimBehind.getViewAlpha() != 0;
+                mScrimInFront.setColors(mSystemColors, animateScrimInFront);
+                mScrimBehind.setColors(mSystemColors, animateScrimBehind);
+                currentScrimColors = mSystemColors;
+            }
 
             // Calculate minimum scrim opacity for white or black text.
             int textColor = currentScrimColors.supportsDarkText() ? Color.BLACK : Color.WHITE;
@@ -821,26 +829,17 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
     @Override
     public void onColorsChanged(ColorExtractor colorExtractor, int which) {
         if ((which & WallpaperManager.FLAG_LOCK) != 0) {
-            mLockColors = getDarkGradientColor(WallpaperManager.FLAG_LOCK,
-                    true /* ignoreVisibility */);
+            mLockColors = mColorExtractor.getColors(WallpaperManager.FLAG_LOCK,
+                    ColorExtractor.TYPE_DARK, true /* ignoreVisibility */);
             mNeedsDrawableColorUpdate = true;
             scheduleUpdate();
         }
         if ((which & WallpaperManager.FLAG_SYSTEM) != 0) {
-            mSystemColors = getDarkGradientColor(WallpaperManager.FLAG_SYSTEM,
-                    mState != ScrimState.UNLOCKED);
+            mSystemColors = mColorExtractor.getColors(WallpaperManager.FLAG_SYSTEM,
+                    ColorExtractor.TYPE_DARK, mState != ScrimState.UNLOCKED);
             mNeedsDrawableColorUpdate = true;
             scheduleUpdate();
         }
-    }
-
-    private GradientColors getDarkGradientColor(int flag, boolean ignoreVisibility) {
-        GradientColors fromWallpaper = mColorExtractor.getColors(flag, ColorExtractor.TYPE_DARK,
-                ignoreVisibility);
-        int color = fromWallpaper.supportsDarkText() ? Color.TRANSPARENT : SCRIM_DEFAULT_COLOR;
-        fromWallpaper.setMainColor(color);
-        fromWallpaper.setSecondaryColor(color);
-        return fromWallpaper;
     }
 
     @VisibleForTesting
@@ -898,28 +897,6 @@ public class ScrimController implements ViewTreeObserver.OnPreDrawListener, OnCo
     public void setKeyguardOccluded(boolean keyguardOccluded) {
         mKeyguardOccluded = keyguardOccluded;
         updateScrims();
-    }
-
-    public void setHasBackdrop(boolean hasBackdrop) {
-        for (ScrimState state : ScrimState.values()) {
-            state.setHasBackdrop(hasBackdrop);
-        }
-
-        // Backdrop event may arrive after state was already applied,
-        // in this case, back-scrim needs to be re-evaluated
-        if (mState == ScrimState.AOD || mState == ScrimState.PULSING) {
-            float newBehindAlpha = mState.getBehindAlpha(mNotificationDensity);
-            if (mCurrentBehindAlpha != newBehindAlpha) {
-                mCurrentBehindAlpha = newBehindAlpha;
-                updateScrims();
-            }
-        }
-    }
-
-    public void setLaunchingAffordanceWithPreview(boolean launchingAffordanceWithPreview) {
-        for (ScrimState state : ScrimState.values()) {
-            state.setLaunchingAffordanceWithPreview(launchingAffordanceWithPreview);
-        }
     }
 
     public interface Callback {

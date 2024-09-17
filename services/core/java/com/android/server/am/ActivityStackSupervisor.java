@@ -27,7 +27,6 @@ import static android.app.ActivityManager.START_TASK_TO_FRONT;
 import static android.app.ActivityManager.StackId.INVALID_STACK_ID;
 import static android.app.ITaskStackListener.FORCED_RESIZEABLE_REASON_SECONDARY_DISPLAY;
 import static android.app.ITaskStackListener.FORCED_RESIZEABLE_REASON_SPLIT_SCREEN;
-import static android.app.WaitResult.INVALID_DELAY;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_ASSISTANT;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_HOME;
 import static android.app.WindowConfiguration.ACTIVITY_TYPE_RECENTS;
@@ -395,9 +394,6 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     /** Set when a power hint has started, but not ended. */
     private boolean mPowerHintSent;
 
-    /** Is Privacy Guard currently enabled? Shared between ActivityStacks. */
-    String mPrivacyGuardPackageName = null;
-
     /**
      * We don't want to allow the device to go to sleep while in the process
      * of launching an activity.  This is primarily to allow alarm intent
@@ -449,6 +445,7 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     private boolean mTaskLayersChanged = true;
 
     private ActivityMetricsLogger mActivityMetricsLogger;
+    private LaunchTimeTracker mLaunchTimeTracker = new LaunchTimeTracker();
 
     private final ArrayList<ActivityRecord> mTmpActivityList = new ArrayList<>();
 
@@ -631,6 +628,10 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
 
     public ActivityMetricsLogger getActivityMetricsLogger() {
         return mActivityMetricsLogger;
+    }
+
+    LaunchTimeTracker getLaunchTimeTracker() {
+        return mLaunchTimeTracker;
     }
 
     public KeyguardController getKeyguardController() {
@@ -863,7 +864,27 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     }
 
     /**
-     * Find all task stacks containing {@param userId} and intercept them with an activity
+     * Detects whether we should show a lock screen in front of this task for a locked user.
+     * <p>
+     * We'll do this if either of the following holds:
+     * <ul>
+     *   <li>The top activity explicitly belongs to {@param userId}.</li>
+     *   <li>The top activity returns a result to an activity belonging to {@param userId}.</li>
+     * </ul>
+     *
+     * @return {@code true} if the top activity looks like it belongs to {@param userId}.
+     */
+    private boolean taskTopActivityIsUser(TaskRecord task, @UserIdInt int userId) {
+        // To handle the case that work app is in the task but just is not the top one.
+        final ActivityRecord activityRecord = task.getTopActivity();
+        final ActivityRecord resultTo = (activityRecord != null ? activityRecord.resultTo : null);
+
+        return (activityRecord != null && activityRecord.userId == userId)
+                || (resultTo != null && resultTo.userId == userId);
+    }
+
+    /**
+     * Find all visible task stacks containing {@param userId} and intercept them with an activity
      * to block out the contents and possibly start a credential-confirming intent.
      *
      * @param userId user handle for the locked managed profile.
@@ -878,14 +899,13 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                     final List<TaskRecord> tasks = stack.getAllTasks();
                     for (int taskNdx = tasks.size() - 1; taskNdx >= 0; taskNdx--) {
                         final TaskRecord task = tasks.get(taskNdx);
-                        for (int activityNdx = task.mActivities.size() - 1; activityNdx >= 0;
-                                activityNdx--) {
-                            final ActivityRecord activity = task.mActivities.get(activityNdx);
-                            if (!activity.finishing && activity.userId == userId) {
-                                mService.mTaskChangeNotificationController.notifyTaskProfileLocked(
-                                        task.taskId, userId);
-                                break;
-                            }
+
+                        // Check the task for a top activity belonging to userId, or returning a
+                        // result to an activity belonging to userId. Example case: a document
+                        // picker for personal files, opened by a work app, should still get locked.
+                        if (taskTopActivityIsUser(task, userId)) {
+                            mService.mTaskChangeNotificationController.notifyTaskProfileLocked(
+                                    task.taskId, userId);
                         }
                     }
                 }
@@ -1101,8 +1121,8 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
         }
     }
 
-    void waitActivityVisible(ComponentName name, WaitResult result, long startTimeMs) {
-        final WaitInfo waitInfo = new WaitInfo(name, result, startTimeMs);
+    void waitActivityVisible(ComponentName name, WaitResult result) {
+        final WaitInfo waitInfo = new WaitInfo(name, result);
         mWaitingForActivityVisible.add(waitInfo);
     }
 
@@ -1133,7 +1153,8 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                 changed = true;
                 result.timeout = false;
                 result.who = w.getComponent();
-                result.totalTime = SystemClock.uptimeMillis() - w.getStartTime();
+                result.totalTime = SystemClock.uptimeMillis() - result.thisTime;
+                result.thisTime = result.totalTime;
                 mWaitingForActivityVisible.remove(w);
             }
         }
@@ -1172,7 +1193,8 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
         }
     }
 
-    void reportActivityLaunchedLocked(boolean timeout, ActivityRecord r, long totalTime) {
+    void reportActivityLaunchedLocked(boolean timeout, ActivityRecord r,
+            long thisTime, long totalTime) {
         boolean changed = false;
         for (int i = mWaitingActivityLaunched.size() - 1; i >= 0; i--) {
             WaitResult w = mWaitingActivityLaunched.remove(i);
@@ -1182,6 +1204,7 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                 if (r != null) {
                     w.who = new ComponentName(r.info.packageName, r.info.name);
                 }
+                w.thisTime = thisTime;
                 w.totalTime = totalTime;
                 // Do not modify w.result.
             }
@@ -1611,8 +1634,6 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
      * @param markFrozenIfConfigChanged Whether to set {@link ActivityRecord#frozenBeforeDestroy} to
      *                                  {@code true} if config changed.
      * @param deferResume Whether to defer resume while updating config.
-     * @return 'true' if starting activity was kept or wasn't provided, 'false' if it was relaunched
-     *         because of configuration update.
      */
     boolean ensureVisibilityAndConfig(ActivityRecord starting, int displayId,
             boolean markFrozenIfConfigChanged, boolean deferResume) {
@@ -1622,11 +1643,6 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
         // activity will be properly updated.
         ensureActivitiesVisibleLocked(null /* starting */, 0 /* configChanges */,
                 false /* preserveWindows */, false /* notifyClients */);
-
-        if (displayId == INVALID_DISPLAY) {
-            // The caller didn't provide a valid display id, skip updating config.
-            return true;
-        }
 
         // Force-update the orientation from the WindowManager, since we need the true configuration
         // to send to the client now.
@@ -1664,6 +1680,8 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
         // Is this activity's application already running?
         ProcessRecord app = mService.getProcessRecordLocked(r.processName,
                 r.info.applicationInfo.uid, true);
+
+        getLaunchTimeTracker().setLaunchTime(r);
 
         if (app != null && app.thread != null) {
             try {
@@ -2002,7 +2020,7 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
             mHandler.removeMessages(IDLE_TIMEOUT_MSG, r);
             r.finishLaunchTickingLocked();
             if (fromTimeout) {
-                reportActivityLaunchedLocked(fromTimeout, r, INVALID_DELAY);
+                reportActivityLaunchedLocked(fromTimeout, r, -1, -1);
             }
 
             // This is a hack to semi-deal with a race condition
@@ -3912,10 +3930,6 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
                         stops = new ArrayList<>();
                     }
                     stops.add(s);
-
-                    // Make sure to remove it in all cases in case we entered this block with
-                    // shouldSleepOrShutDown
-                    mActivitiesWaitingForVisibleActivity.remove(s);
                     mStoppingActivities.remove(activityNdx);
                 }
             }
@@ -4828,7 +4842,7 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
             return mService.getActivityStartController().startActivityInPackage(
                     task.mCallingUid, callingPid, callingUid, callingPackage, intent, null, null,
                     null, 0, 0, options, userId, task, "startActivityFromRecents",
-                    false /* validateIncomingUser */, null /* originatingPendingIntent */);
+                    false /* validateIncomingUser */);
         } finally {
             if (windowingMode == WINDOWING_MODE_SPLIT_SCREEN_PRIMARY && task != null) {
                 // If we are launching the task in the docked stack, put it into resizing mode so
@@ -4891,13 +4905,10 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
     static class WaitInfo {
         private final ComponentName mTargetComponent;
         private final WaitResult mResult;
-        /** Time stamp when we started to wait for {@link WaitResult}. */
-        private final long mStartTimeMs;
 
-        WaitInfo(ComponentName targetComponent, WaitResult result, long startTimeMs) {
+        public WaitInfo(ComponentName targetComponent, WaitResult result) {
             this.mTargetComponent = targetComponent;
             this.mResult = result;
-            this.mStartTimeMs = startTimeMs;
         }
 
         public boolean matches(ComponentName targetComponent) {
@@ -4906,10 +4917,6 @@ public class ActivityStackSupervisor extends ConfigurationContainer implements D
 
         public WaitResult getResult() {
             return mResult;
-        }
-
-        public long getStartTime() {
-            return mStartTimeMs;
         }
 
         public ComponentName getComponent() {

@@ -22,21 +22,20 @@ import static com.android.systemui.Interpolators.ALPHA_IN;
 import static com.android.systemui.Interpolators.ALPHA_OUT;
 import static com.android.systemui.OverviewProxyService.DEBUG_OVERVIEW_PROXY;
 import static com.android.systemui.OverviewProxyService.TAG_OPS;
-import static com.android.systemui.shared.system.NavigationBarCompat.HIT_TARGET_DEAD_ZONE;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
+import android.animation.ArgbEvaluator;
 import android.animation.ObjectAnimator;
 import android.animation.PropertyValuesHolder;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Matrix;
-import android.graphics.Paint;
-import android.graphics.RadialGradient;
 import android.graphics.Rect;
-import android.graphics.Shader;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.RemoteException;
 import android.util.FloatProperty;
@@ -55,6 +54,7 @@ import com.android.systemui.plugins.statusbar.phone.NavGesture.GestureHelper;
 import com.android.systemui.shared.recents.IOverviewProxy;
 import com.android.systemui.shared.recents.utilities.Utilities;
 import com.android.systemui.shared.system.NavigationBarCompat;
+import com.android.internal.graphics.ColorUtils;
 
 /**
  * Class to detect gestures on the navigation bar and implement quick scrub.
@@ -65,7 +65,6 @@ public class QuickStepController implements GestureHelper {
     private static final int ANIM_IN_DURATION_MS = 150;
     private static final int ANIM_OUT_DURATION_MS = 134;
     private static final float TRACK_SCALE = 0.95f;
-    private static final float GRADIENT_WIDTH = .75f;
 
     private NavigationBarView mNavigationBarView;
 
@@ -79,22 +78,23 @@ public class QuickStepController implements GestureHelper {
     private boolean mIsRTL;
     private float mTrackAlpha;
     private float mTrackScale = TRACK_SCALE;
+    private int mLightTrackColor;
+    private int mDarkTrackColor;
     private float mDarkIntensity;
-    private RadialGradient mHighlight;
-    private float mHighlightCenter;
     private AnimatorSet mTrackAnimator;
     private ButtonDispatcher mHitTarget;
     private View mCurrentNavigationBarView;
 
     private final Handler mHandler = new Handler();
     private final Rect mTrackRect = new Rect();
+    private final Drawable mTrackDrawable;
     private final OverviewProxyService mOverviewEventSender;
     private final int mTrackThickness;
     private final int mTrackEndPadding;
     private final Context mContext;
     private final Matrix mTransformGlobalMatrix = new Matrix();
     private final Matrix mTransformLocalMatrix = new Matrix();
-    private final Paint mTrackPaint = new Paint();
+    private final ArgbEvaluator mTrackColorEvaluator = new ArgbEvaluator();
 
     private final FloatProperty<QuickStepController> mTrackAlphaProperty =
             new FloatProperty<QuickStepController>("TrackAlpha") {
@@ -155,8 +155,7 @@ public class QuickStepController implements GestureHelper {
         mOverviewEventSender = Dependency.get(OverviewProxyService.class);
         mTrackThickness = res.getDimensionPixelSize(R.dimen.nav_quick_scrub_track_thickness);
         mTrackEndPadding = res.getDimensionPixelSize(R.dimen.nav_quick_scrub_track_edge_padding);
-        mTrackPaint.setAntiAlias(true);
-        mTrackPaint.setDither(true);
+        mTrackDrawable = context.getDrawable(R.drawable.qs_scrubber_track).mutate();
     }
 
     public void setComponents(NavigationBarView navigationBarView) {
@@ -185,11 +184,9 @@ public class QuickStepController implements GestureHelper {
     }
 
     private boolean handleTouchEvent(MotionEvent event) {
-        final boolean deadZoneConsumed =
-                mNavigationBarView.getDownHitTarget() == HIT_TARGET_DEAD_ZONE;
         if (mOverviewEventSender.getProxy() == null || (!mNavigationBarView.isQuickScrubEnabled()
                 && !mNavigationBarView.isQuickStepSwipeUpEnabled())) {
-            return deadZoneConsumed;
+            return false;
         }
         mNavigationBarView.requestUnbufferedDispatch(event);
 
@@ -290,8 +287,6 @@ public class QuickStepController implements GestureHelper {
                     } catch (RemoteException e) {
                         Log.e(TAG, "Failed to send progress of quick scrub.", e);
                     }
-                    mHighlightCenter = x;
-                    mNavigationBarView.invalidate();
                 }
                 break;
             }
@@ -307,7 +302,7 @@ public class QuickStepController implements GestureHelper {
                 || action == MotionEvent.ACTION_UP)) {
             proxyMotionEvents(event);
         }
-        return mQuickScrubActive || mQuickStepStarted || deadZoneConsumed;
+        return mQuickScrubActive || mQuickStepStarted;
     }
 
     @Override
@@ -315,18 +310,18 @@ public class QuickStepController implements GestureHelper {
         if (!mNavigationBarView.isQuickScrubEnabled()) {
             return;
         }
-        mTrackPaint.setAlpha(Math.round(255f * mTrackAlpha));
+        int color = (int) mTrackColorEvaluator.evaluate(mDarkIntensity, mLightTrackColor,
+                mDarkTrackColor);
+        int colorAlpha = ColorUtils.setAlphaComponent(color,
+                (int) (Color.alpha(color) * mTrackAlpha));
+        mTrackDrawable.setTint(colorAlpha);
 
         // Scale the track, but apply the inverse scale from the nav bar
-        final float radius = mTrackRect.height() / 2;
         canvas.save();
-        float translate = Utilities.clamp(mHighlightCenter, mTrackRect.left, mTrackRect.right);
-        canvas.translate(translate, 0);
         canvas.scale(mTrackScale / mNavigationBarView.getScaleX(),
                 1f / mNavigationBarView.getScaleY(),
                 mTrackRect.centerX(), mTrackRect.centerY());
-        canvas.drawRoundRect(mTrackRect.left - translate, mTrackRect.top,
-                mTrackRect.right - translate, mTrackRect.bottom, radius, radius, mTrackPaint);
+        mTrackDrawable.draw(canvas);
         canvas.restore();
     }
 
@@ -351,20 +346,12 @@ public class QuickStepController implements GestureHelper {
             x2 = x1 + width - 2 * mTrackEndPadding;
         }
         mTrackRect.set(x1, y1, x2, y2);
-        updateHighlight();
+        mTrackDrawable.setBounds(mTrackRect);
     }
 
     @Override
     public void onDarkIntensityChange(float intensity) {
-        final float oldIntensity = mDarkIntensity;
         mDarkIntensity = intensity;
-
-        // When in quick scrub, invalidate gradient if changing intensity from black to white and
-        // vice-versa
-        if (mNavigationBarView.isQuickScrubEnabled()
-                && Math.round(intensity) != Math.round(oldIntensity)) {
-            updateHighlight();
-        }
         mNavigationBarView.invalidate();
     }
 
@@ -421,8 +408,10 @@ public class QuickStepController implements GestureHelper {
 
     private void startQuickScrub() {
         if (!mQuickScrubActive) {
-            updateHighlight();
             mQuickScrubActive = true;
+            mLightTrackColor = mContext.getColor(R.color.quick_step_track_background_light);
+            mDarkTrackColor = mContext.getColor(R.color.quick_step_track_background_dark);
+
             ObjectAnimator trackAnimator = ObjectAnimator.ofPropertyValuesHolder(this,
                     PropertyValuesHolder.ofFloat(mTrackAlphaProperty, 1f),
                     PropertyValuesHolder.ofFloat(mTrackScaleProperty, 1f));
@@ -434,9 +423,6 @@ public class QuickStepController implements GestureHelper {
             mTrackAnimator = new AnimatorSet();
             mTrackAnimator.playTogether(trackAnimator, navBarAnimator);
             mTrackAnimator.start();
-
-            // Disable slippery for quick scrub to not cancel outside the nav bar
-            mNavigationBarView.updateSlippery();
 
             try {
                 mOverviewEventSender.getProxy().onQuickScrubStart();
@@ -497,25 +483,6 @@ public class QuickStepController implements GestureHelper {
         mQuickScrubActive = false;
         mAllowGestureDetection = false;
         mCurrentNavigationBarView = null;
-        updateHighlight();
-    }
-
-    private void updateHighlight() {
-        if (mTrackRect.isEmpty()) {
-            return;
-        }
-        int colorBase, colorGrad;
-        if (mDarkIntensity > 0.5f) {
-            colorBase = mContext.getColor(R.color.quick_step_track_background_background_dark);
-            colorGrad = mContext.getColor(R.color.quick_step_track_background_foreground_dark);
-        } else {
-            colorBase = mContext.getColor(R.color.quick_step_track_background_background_light);
-            colorGrad = mContext.getColor(R.color.quick_step_track_background_foreground_light);
-        }
-        mHighlight = new RadialGradient(0, mTrackRect.height() / 2,
-                mTrackRect.width() * GRADIENT_WIDTH, colorGrad, colorBase,
-                Shader.TileMode.CLAMP);
-        mTrackPaint.setShader(mHighlight);
     }
 
     private boolean proxyMotionEvents(MotionEvent event) {

@@ -1,6 +1,4 @@
 /*
- * Copyright (C) 2015 NXP Semiconductors
- * The original Work has been changed by NXP Semiconductors.
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,7 +38,7 @@ import java.nio.ByteOrder;
  * <li>MIFARE Classic Mini are 320 bytes ({@link #SIZE_MINI}), with 5 sectors each of 4 blocks.
  * <li>MIFARE Classic 1k are 1024 bytes ({@link #SIZE_1K}), with 16 sectors each of 4 blocks.
  * <li>MIFARE Classic 2k are 2048 bytes ({@link #SIZE_2K}), with 32 sectors each of 4 blocks.
- * <li>MIFARE Classic 4k are 4096 bytes ({@link #SIZE_4K}). The first 32 sectors contain 4 blocks
+ * <li>MIFARE Classic 4k} are 4096 bytes ({@link #SIZE_4K}). The first 32 sectors contain 4 blocks
  * and the last 8 sectors contain 16 blocks.
  * </ul>
  *
@@ -174,10 +172,6 @@ public final class MifareClassic extends BasicTagTechnology {
         case 0x18:
             mType = TYPE_CLASSIC;
             mSize = SIZE_4K;
-            break;
-        case 0x19:
-            mType = TYPE_CLASSIC;
-            mSize = SIZE_2K;
             break;
         case 0x28:
             mType = TYPE_CLASSIC;

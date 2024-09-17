@@ -93,7 +93,7 @@ public class SysuiColorExtractorTests extends SysuiTestCase {
         SysuiColorExtractor extractor = getTestableExtractor(colors);
         simulateEvent(extractor);
         extractor.setWallpaperVisible(true);
-        extractor.setHasBackdrop(true);
+        extractor.setMediaBackdropVisible(true);
 
         ColorExtractor.GradientColors fallbackColors = extractor.getFallbackColors();
 

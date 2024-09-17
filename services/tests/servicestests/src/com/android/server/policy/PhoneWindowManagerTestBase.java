@@ -37,7 +37,6 @@ import android.graphics.Matrix;
 import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.os.IBinder;
 import android.os.UserHandle;
 import android.support.test.InstrumentationRegistry;
@@ -173,14 +172,15 @@ public class PhoneWindowManagerTestBase {
     }
 
     private static DisplayCutout displayCutoutForRotation(int rotation) {
-        RectF rectF = new RectF(DISPLAY_WIDTH / 4, 0, DISPLAY_WIDTH * 3 / 4, DISPLAY_CUTOUT_HEIGHT);
+        Path p = new Path();
+        p.addRect(DISPLAY_WIDTH / 4, 0, DISPLAY_WIDTH * 3 / 4, DISPLAY_CUTOUT_HEIGHT,
+                Path.Direction.CCW);
 
         Matrix m = new Matrix();
         transformPhysicalToLogicalCoordinates(rotation, DISPLAY_WIDTH, DISPLAY_HEIGHT, m);
-        m.mapRect(rectF);
+        p.transform(m);
 
-        return DisplayCutout.fromBoundingRect((int) rectF.left, (int) rectF.top,
-                (int) rectF.right, (int) rectF.bottom);
+        return DisplayCutout.fromBounds(p);
     }
 
     static class TestContextWrapper extends ContextWrapper {

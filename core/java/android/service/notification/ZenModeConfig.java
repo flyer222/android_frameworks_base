@@ -240,27 +240,9 @@ public class ZenModeConfig implements Parcelable {
                 .append(",allowMessagesFrom=").append(sourceToString(allowMessagesFrom))
                 .append(",suppressedVisualEffects=").append(suppressedVisualEffects)
                 .append(",areChannelsBypassingDnd=").append(areChannelsBypassingDnd)
-                .append(",\nautomaticRules=").append(rulesToString())
-                .append(",\nmanualRule=").append(manualRule)
+                .append(",automaticRules=").append(automaticRules)
+                .append(",manualRule=").append(manualRule)
                 .append(']').toString();
-    }
-
-    private String rulesToString() {
-        if (automaticRules.isEmpty()) {
-            return "{}";
-        }
-
-        StringBuilder buffer = new StringBuilder(automaticRules.size() * 28);
-        buffer.append('{');
-        for (int i = 0; i < automaticRules.size(); i++) {
-            if (i > 0) {
-                buffer.append(",\n");
-            }
-            Object value = automaticRules.valueAt(i);
-            buffer.append(value);
-        }
-        buffer.append('}');
-        return buffer.toString();
     }
 
     private Diff diff(ZenModeConfig to) {
@@ -1027,10 +1009,10 @@ public class ZenModeConfig implements Parcelable {
 
     public static ScheduleInfo tryParseScheduleConditionId(Uri conditionId) {
         final boolean isSchedule =  conditionId != null
-                && Condition.SCHEME.equals(conditionId.getScheme())
-                && ZenModeConfig.SYSTEM_AUTHORITY.equals(conditionId.getAuthority())
+                && conditionId.getScheme().equals(Condition.SCHEME)
+                && conditionId.getAuthority().equals(ZenModeConfig.SYSTEM_AUTHORITY)
                 && conditionId.getPathSegments().size() == 1
-                && ZenModeConfig.SCHEDULE_PATH.equals(conditionId.getPathSegments().get(0));
+                && conditionId.getPathSegments().get(0).equals(ZenModeConfig.SCHEDULE_PATH);
         if (!isSchedule) return null;
         final int[] start = tryParseHourAndMinute(conditionId.getQueryParameter("start"));
         final int[] end = tryParseHourAndMinute(conditionId.getQueryParameter("end"));
@@ -1128,10 +1110,10 @@ public class ZenModeConfig implements Parcelable {
 
     public static EventInfo tryParseEventConditionId(Uri conditionId) {
         final boolean isEvent = conditionId != null
-                && Condition.SCHEME.equals(conditionId.getScheme())
-                && ZenModeConfig.SYSTEM_AUTHORITY.equals(conditionId.getAuthority())
+                && conditionId.getScheme().equals(Condition.SCHEME)
+                && conditionId.getAuthority().equals(ZenModeConfig.SYSTEM_AUTHORITY)
                 && conditionId.getPathSegments().size() == 1
-                && EVENT_PATH.equals(conditionId.getPathSegments().get(0));
+                && conditionId.getPathSegments().get(0).equals(EVENT_PATH);
         if (!isEvent) return null;
         final EventInfo rt = new EventInfo();
         rt.userId = tryParseInt(conditionId.getQueryParameter("userId"), UserHandle.USER_NULL);
@@ -1340,14 +1322,14 @@ public class ZenModeConfig implements Parcelable {
         @Override
         public String toString() {
             return new StringBuilder(ZenRule.class.getSimpleName()).append('[')
-                    .append("id=").append(id)
-                    .append(",enabled=").append(String.valueOf(enabled).toUpperCase())
+                    .append("enabled=").append(enabled)
                     .append(",snoozing=").append(snoozing)
                     .append(",name=").append(name)
                     .append(",zenMode=").append(Global.zenModeToString(zenMode))
                     .append(",conditionId=").append(conditionId)
                     .append(",condition=").append(condition)
                     .append(",component=").append(component)
+                    .append(",id=").append(id)
                     .append(",creationTime=").append(creationTime)
                     .append(",enabler=").append(enabler)
                     .append(']').toString();
@@ -1479,7 +1461,7 @@ public class ZenModeConfig implements Parcelable {
             final int N = lines.size();
             for (int i = 0; i < N; i++) {
                 if (i > 0) {
-                    sb.append(",\n");
+                    sb.append(',');
                 }
                 sb.append(lines.get(i));
             }

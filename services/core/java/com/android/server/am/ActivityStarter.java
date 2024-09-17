@@ -99,7 +99,6 @@ import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.SystemClock;
-import android.os.Trace;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.service.voice.IVoiceInteractionSession;
@@ -282,8 +281,6 @@ class ActivityStarter {
      * execution.
      */
     private static class Request {
-        static final int DEFAULT_REAL_CALLING_PID = 0;
-        static final int DEFAULT_REAL_CALLING_UID = UserHandle.USER_NULL;
         private static final int DEFAULT_CALLING_UID = -1;
         private static final int DEFAULT_CALLING_PID = 0;
 
@@ -298,11 +295,11 @@ class ActivityStarter {
         IBinder resultTo;
         String resultWho;
         int requestCode;
-        int callingPid = DEFAULT_CALLING_PID;
-        int callingUid = DEFAULT_CALLING_UID;
+        int callingPid = DEFAULT_CALLING_UID;
+        int callingUid = DEFAULT_CALLING_PID;
         String callingPackage;
-        int realCallingPid = Request.DEFAULT_REAL_CALLING_PID;
-        int realCallingUid = Request.DEFAULT_REAL_CALLING_UID;
+        int realCallingPid;
+        int realCallingUid;
         int startFlags;
         SafeActivityOptions activityOptions;
         boolean ignoreTargetSecurity;
@@ -316,7 +313,6 @@ class ActivityStarter {
         int userId;
         WaitResult waitResult;
         int filterCallingUid;
-        PendingIntentRecord originatingPendingIntent;
 
         /**
          * If set to {@code true}, allows this activity start to look into
@@ -356,8 +352,8 @@ class ActivityStarter {
             callingPid = DEFAULT_CALLING_PID;
             callingUid = DEFAULT_CALLING_UID;
             callingPackage = null;
-            realCallingPid = Request.DEFAULT_REAL_CALLING_PID;
-            realCallingUid = Request.DEFAULT_REAL_CALLING_UID;
+            realCallingPid = 0;
+            realCallingUid = 0;
             startFlags = 0;
             activityOptions = null;
             ignoreTargetSecurity = false;
@@ -372,8 +368,7 @@ class ActivityStarter {
             mayWait = false;
             avoidMoveToFront = false;
             allowPendingRemoteAnimationRegistryLookup = true;
-            filterCallingUid = DEFAULT_REAL_CALLING_UID;
-            originatingPendingIntent = null;
+            filterCallingUid = UserHandle.USER_NULL;
         }
 
         /**
@@ -412,7 +407,6 @@ class ActivityStarter {
             allowPendingRemoteAnimationRegistryLookup
                     = request.allowPendingRemoteAnimationRegistryLookup;
             filterCallingUid = request.filterCallingUid;
-            originatingPendingIntent = request.originatingPendingIntent;
         }
     }
 
@@ -490,15 +484,13 @@ class ActivityStarter {
             // for transactional diffs and preprocessing.
             if (mRequest.mayWait) {
                 return startActivityMayWait(mRequest.caller, mRequest.callingUid,
-                        mRequest.callingPackage, mRequest.realCallingPid, mRequest.realCallingUid,
-                        mRequest.intent, mRequest.resolvedType,
+                        mRequest.callingPackage, mRequest.intent, mRequest.resolvedType,
                         mRequest.voiceSession, mRequest.voiceInteractor, mRequest.resultTo,
                         mRequest.resultWho, mRequest.requestCode, mRequest.startFlags,
                         mRequest.profilerInfo, mRequest.waitResult, mRequest.globalConfig,
                         mRequest.activityOptions, mRequest.ignoreTargetSecurity, mRequest.userId,
                         mRequest.inTask, mRequest.reason,
-                        mRequest.allowPendingRemoteAnimationRegistryLookup,
-                        mRequest.originatingPendingIntent);
+                        mRequest.allowPendingRemoteAnimationRegistryLookup);
             } else {
                 return startActivity(mRequest.caller, mRequest.intent, mRequest.ephemeralIntent,
                         mRequest.resolvedType, mRequest.activityInfo, mRequest.resolveInfo,
@@ -508,8 +500,7 @@ class ActivityStarter {
                         mRequest.realCallingUid, mRequest.startFlags, mRequest.activityOptions,
                         mRequest.ignoreTargetSecurity, mRequest.componentSpecified,
                         mRequest.outActivity, mRequest.inTask, mRequest.reason,
-                        mRequest.allowPendingRemoteAnimationRegistryLookup,
-                        mRequest.originatingPendingIntent);
+                        mRequest.allowPendingRemoteAnimationRegistryLookup);
             }
         } finally {
             onExecutionComplete();
@@ -541,8 +532,7 @@ class ActivityStarter {
             String callingPackage, int realCallingPid, int realCallingUid, int startFlags,
             SafeActivityOptions options, boolean ignoreTargetSecurity, boolean componentSpecified,
             ActivityRecord[] outActivity, TaskRecord inTask, String reason,
-            boolean allowPendingRemoteAnimationRegistryLookup,
-            PendingIntentRecord originatingPendingIntent) {
+            boolean allowPendingRemoteAnimationRegistryLookup) {
 
         if (TextUtils.isEmpty(reason)) {
             throw new IllegalArgumentException("Need to specify a reason.");
@@ -555,7 +545,7 @@ class ActivityStarter {
                 aInfo, rInfo, voiceSession, voiceInteractor, resultTo, resultWho, requestCode,
                 callingPid, callingUid, callingPackage, realCallingPid, realCallingUid, startFlags,
                 options, ignoreTargetSecurity, componentSpecified, mLastStartActivityRecord,
-                inTask, allowPendingRemoteAnimationRegistryLookup, originatingPendingIntent);
+                inTask, allowPendingRemoteAnimationRegistryLookup);
 
         if (outActivity != null) {
             // mLastStartActivityRecord[0] is set in the call to startActivity above.
@@ -585,8 +575,7 @@ class ActivityStarter {
             String callingPackage, int realCallingPid, int realCallingUid, int startFlags,
             SafeActivityOptions options,
             boolean ignoreTargetSecurity, boolean componentSpecified, ActivityRecord[] outActivity,
-            TaskRecord inTask, boolean allowPendingRemoteAnimationRegistryLookup,
-            PendingIntentRecord originatingPendingIntent) {
+            TaskRecord inTask, boolean allowPendingRemoteAnimationRegistryLookup) {
         int err = ActivityManager.START_SUCCESS;
         // Pull the optional Ephemeral Installer-only bundle out of the options early.
         final Bundle verificationBundle
@@ -876,58 +865,10 @@ class ActivityStarter {
 
         mController.doPendingActivityLaunches(false);
 
-        maybeLogActivityStart(callingUid, callingPackage, realCallingUid, intent, callerApp, r,
-                originatingPendingIntent);
-
         return startActivity(r, sourceRecord, voiceSession, voiceInteractor, startFlags,
                 true /* doResume */, checkedOptions, inTask, outActivity);
     }
 
-    private void maybeLogActivityStart(int callingUid, String callingPackage, int realCallingUid,
-            Intent intent, ProcessRecord callerApp, ActivityRecord r,
-            PendingIntentRecord originatingPendingIntent) {
-        boolean callerAppHasForegroundActivity = (callerApp != null)
-                ? callerApp.foregroundActivities
-                : false;
-        if (!mService.isActivityStartsLoggingEnabled() || callerAppHasForegroundActivity
-                || r == null) {
-            // skip logging in this case
-            return;
-        }
-
-        try {
-            Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, "logActivityStart");
-            final int callingUidProcState = mService.getUidStateLocked(callingUid);
-            final boolean callingUidHasAnyVisibleWindow =
-                    mService.mWindowManager.isAnyWindowVisibleForUid(callingUid);
-            final int realCallingUidProcState = (callingUid == realCallingUid)
-                    ? callingUidProcState
-                    : mService.getUidStateLocked(realCallingUid);
-            final boolean realCallingUidHasAnyVisibleWindow = (callingUid == realCallingUid)
-                    ? callingUidHasAnyVisibleWindow
-                    : mService.mWindowManager.isAnyWindowVisibleForUid(realCallingUid);
-            final String targetPackage = r.packageName;
-            final int targetUid = (r.appInfo != null) ? r.appInfo.uid : -1;
-            final int targetUidProcState = mService.getUidStateLocked(targetUid);
-            final boolean targetUidHasAnyVisibleWindow = (targetUid != -1)
-                    ? mService.mWindowManager.isAnyWindowVisibleForUid(targetUid)
-                    : false;
-            final String targetWhitelistTag = (targetUid != -1)
-                    ? mService.getPendingTempWhitelistTagForUidLocked(targetUid)
-                    : null;
-
-            mSupervisor.getActivityMetricsLogger().logActivityStart(intent, callerApp, r,
-                    callingUid, callingPackage, callingUidProcState,
-                    callingUidHasAnyVisibleWindow,
-                    realCallingUid, realCallingUidProcState,
-                    realCallingUidHasAnyVisibleWindow,
-                    targetUid, targetPackage, targetUidProcState,
-                    targetUidHasAnyVisibleWindow, targetWhitelistTag,
-                    (originatingPendingIntent != null));
-        } finally {
-            Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
-        }
-    }
 
     /**
      * Creates a launch intent for the given auxiliary resolution data.
@@ -1002,15 +943,13 @@ class ActivityStarter {
     }
 
     private int startActivityMayWait(IApplicationThread caller, int callingUid,
-            String callingPackage, int requestRealCallingPid, int requestRealCallingUid,
-            Intent intent, String resolvedType,
+            String callingPackage, Intent intent, String resolvedType,
             IVoiceInteractionSession voiceSession, IVoiceInteractor voiceInteractor,
             IBinder resultTo, String resultWho, int requestCode, int startFlags,
             ProfilerInfo profilerInfo, WaitResult outResult,
             Configuration globalConfig, SafeActivityOptions options, boolean ignoreTargetSecurity,
             int userId, TaskRecord inTask, String reason,
-            boolean allowPendingRemoteAnimationRegistryLookup,
-            PendingIntentRecord originatingPendingIntent) {
+            boolean allowPendingRemoteAnimationRegistryLookup) {
         // Refuse possible leaked file descriptors
         if (intent != null && intent.hasFileDescriptors()) {
             throw new IllegalArgumentException("File descriptors passed in Intent");
@@ -1018,12 +957,8 @@ class ActivityStarter {
         mSupervisor.getActivityMetricsLogger().notifyActivityLaunching();
         boolean componentSpecified = intent.getComponent() != null;
 
-        final int realCallingPid = requestRealCallingPid != Request.DEFAULT_REAL_CALLING_PID
-                                   ? requestRealCallingPid
-                                   : Binder.getCallingPid();
-        final int realCallingUid = requestRealCallingUid != Request.DEFAULT_REAL_CALLING_UID
-                                   ? requestRealCallingUid
-                                   : Binder.getCallingUid();
+        final int realCallingPid = Binder.getCallingPid();
+        final int realCallingUid = Binder.getCallingUid();
 
         int callingPid;
         if (callingUid >= 0) {
@@ -1165,7 +1100,7 @@ class ActivityStarter {
                     voiceSession, voiceInteractor, resultTo, resultWho, requestCode, callingPid,
                     callingUid, callingPackage, realCallingPid, realCallingUid, startFlags, options,
                     ignoreTargetSecurity, componentSpecified, outRecord, inTask, reason,
-                    allowPendingRemoteAnimationRegistryLookup, originatingPendingIntent);
+                    allowPendingRemoteAnimationRegistryLookup);
 
             Binder.restoreCallingIdentity(origId);
 
@@ -1182,9 +1117,6 @@ class ActivityStarter {
                 mService.updateConfigurationLocked(globalConfig, null, false);
             }
 
-            // Notify ActivityMetricsLogger that the activity has launched. ActivityMetricsLogger
-            // will then wait for the windows to be drawn and populate WaitResult.
-            mSupervisor.getActivityMetricsLogger().notifyActivityLaunched(res, outRecord[0]);
             if (outResult != null) {
                 outResult.result = res;
 
@@ -1209,6 +1141,7 @@ class ActivityStarter {
                         outResult.timeout = false;
                         outResult.who = r.realActivity;
                         outResult.totalTime = 0;
+                        outResult.thisTime = 0;
                         break;
                     }
                     case START_TASK_TO_FRONT: {
@@ -1218,9 +1151,10 @@ class ActivityStarter {
                             outResult.timeout = false;
                             outResult.who = r.realActivity;
                             outResult.totalTime = 0;
+                            outResult.thisTime = 0;
                         } else {
-                            final long startTimeMs = SystemClock.uptimeMillis();
-                            mSupervisor.waitActivityVisible(r.realActivity, outResult, startTimeMs);
+                            outResult.thisTime = SystemClock.uptimeMillis();
+                            mSupervisor.waitActivityVisible(r.realActivity, outResult);
                             // Note: the timeout variable is not currently not ever set.
                             do {
                                 try {
@@ -1234,6 +1168,7 @@ class ActivityStarter {
                 }
             }
 
+            mSupervisor.getActivityMetricsLogger().notifyActivityLaunched(res, outRecord[0]);
             return res;
         }
     }
@@ -1250,7 +1185,7 @@ class ActivityStarter {
      */
     static int computeResolveFilterUid(int customCallingUid, int actualCallingUid,
             int filterCallingUid) {
-        return filterCallingUid != Request.DEFAULT_REAL_CALLING_UID
+        return filterCallingUid != UserHandle.USER_NULL
                 ? filterCallingUid
                 : (customCallingUid >= 0 ? customCallingUid : actualCallingUid);
     }
@@ -2687,11 +2622,6 @@ class ActivityStarter {
 
     ActivityStarter setAllowPendingRemoteAnimationRegistryLookup(boolean allowLookup) {
         mRequest.allowPendingRemoteAnimationRegistryLookup = allowLookup;
-        return this;
-    }
-
-    ActivityStarter setOriginatingPendingIntent(PendingIntentRecord originatingPendingIntent) {
-        mRequest.originatingPendingIntent = originatingPendingIntent;
         return this;
     }
 

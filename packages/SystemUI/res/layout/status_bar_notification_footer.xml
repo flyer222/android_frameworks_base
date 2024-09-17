@@ -34,7 +34,8 @@
             android:layout_gravity="start"
             android:focusable="true"
             android:text="@string/manage_notifications_text"
-            android:textColor="?attr/wallpaperTextColor"/>
+            android:textColor="?attr/wallpaperTextColor"
+            android:textAllCaps="false"/>
         <com.android.systemui.statusbar.FooterViewButton
             style="@android:style/Widget.Material.Button.Borderless"
             android:id="@+id/dismiss_text"

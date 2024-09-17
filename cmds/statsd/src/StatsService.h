@@ -74,11 +74,6 @@ public:
     void Startup();
 
     /**
-     * Called when terminiation signal received.
-     */
-    void Terminate();
-
-    /**
      * Called by LogReader when there's a log event to process.
      */
     virtual void OnLogEvent(LogEvent* event, bool reconnectionStarts);

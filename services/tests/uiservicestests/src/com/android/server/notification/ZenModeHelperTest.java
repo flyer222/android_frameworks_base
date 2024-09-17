@@ -38,7 +38,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import android.app.AppGlobals;
 import android.app.AppOpsManager;
 import android.app.NotificationManager;
 import android.content.ComponentName;
@@ -50,10 +49,8 @@ import android.media.AudioManager;
 import android.media.AudioManagerInternal;
 import android.media.VolumePolicy;
 import android.media.AudioSystem;
-import android.net.Uri;
 import android.provider.Settings;
 import android.provider.Settings.Global;
-import android.service.notification.Condition;
 import android.service.notification.ZenModeConfig;
 import android.service.notification.ZenModeConfig.ScheduleInfo;
 import android.test.suitebuilder.annotation.SmallTest;
@@ -64,7 +61,6 @@ import android.util.Xml;
 
 import com.android.internal.R;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
-import com.android.server.notification.ManagedServices.UserProfiles;
 import com.android.internal.util.FastXmlSerializer;
 import com.android.server.UiServiceTestCase;
 import android.util.Slog;
@@ -87,7 +83,7 @@ import java.io.ByteArrayOutputStream;
 @TestableLooper.RunWithLooper
 public class ZenModeHelperTest extends UiServiceTestCase {
 
-    ConditionProviders mConditionProviders;
+    @Mock ConditionProviders mConditionProviders;
     @Mock NotificationManager mNotificationManager;
     @Mock private Resources mResources;
     private TestableLooper mTestableLooper;
@@ -107,9 +103,6 @@ public class ZenModeHelperTest extends UiServiceTestCase {
         when(mResources.getString(R.string.zen_mode_default_events_name)).thenReturn("events");
         when(mContext.getSystemService(NotificationManager.class)).thenReturn(mNotificationManager);
 
-        mConditionProviders = new ConditionProviders(mContext, new UserProfiles(),
-                AppGlobals.getPackageManager());
-        mConditionProviders.addSystemProvider(new CountdownConditionProvider());
         mZenModeHelperSpy = spy(new ZenModeHelper(mContext, mTestableLooper.getLooper(),
                 mConditionProviders));
     }
@@ -123,7 +116,7 @@ public class ZenModeHelperTest extends UiServiceTestCase {
         mZenModeHelperSpy.writeXml(serializer, forBackup, version);
         serializer.endDocument();
         serializer.flush();
-        mZenModeHelperSpy.setConfig(new ZenModeConfig(), null, "writing xml");
+        mZenModeHelperSpy.setConfig(new ZenModeConfig(), "writing xml");
         return baos;
     }
 
@@ -818,30 +811,6 @@ public class ZenModeHelperTest extends UiServiceTestCase {
         assertFalse(rules.containsKey("customRule"));
 
         setupZenConfigMaintained();
-    }
-
-    @Test
-    public void testCountdownConditionSubscription() throws Exception {
-        ZenModeConfig config = new ZenModeConfig();
-        mZenModeHelperSpy.mConfig = config;
-        mZenModeHelperSpy.mConditions.evaluateConfig(mZenModeHelperSpy.mConfig, null, true);
-        assertEquals(0, mZenModeHelperSpy.mConditions.mSubscriptions.size());
-
-        mZenModeHelperSpy.mConfig.manualRule = new ZenModeConfig.ZenRule();
-        Uri conditionId = ZenModeConfig.toCountdownConditionId(9000000, false);
-        mZenModeHelperSpy.mConfig.manualRule.conditionId = conditionId;
-        mZenModeHelperSpy.mConfig.manualRule.component = new ComponentName("android",
-                CountdownConditionProvider.class.getName());
-        mZenModeHelperSpy.mConfig.manualRule.condition = new Condition(conditionId, "", "", "", 0,
-                Condition.STATE_TRUE, Condition.FLAG_RELEVANT_NOW);
-        mZenModeHelperSpy.mConfig.manualRule.enabled = true;
-        ZenModeConfig originalConfig = mZenModeHelperSpy.mConfig.copy();
-
-        mZenModeHelperSpy.mConditions.evaluateConfig(mZenModeHelperSpy.mConfig, null, true);
-
-        assertEquals(true, ZenModeConfig.isValidCountdownConditionId(conditionId));
-        assertEquals(originalConfig, mZenModeHelperSpy.mConfig);
-        assertEquals(1, mZenModeHelperSpy.mConditions.mSubscriptions.size());
     }
 
     private void setupZenConfig() {

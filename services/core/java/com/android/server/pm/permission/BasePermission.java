@@ -81,8 +81,6 @@ public final class BasePermission {
 
     final @PermissionType int type;
 
-    private boolean mPermissionDefinitionChanged;
-
     String sourcePackageName;
 
     // TODO: Can we get rid of this? Seems we only use some signature info from the setting
@@ -135,11 +133,6 @@ public final class BasePermission {
     public Signature[] getSourceSignatures() {
         return sourcePackageSetting.getSignatures();
     }
-
-    public boolean isPermissionDefinitionChanged() {
-        return mPermissionDefinitionChanged;
-    }
-
     public int getType() {
         return type;
     }
@@ -155,10 +148,6 @@ public final class BasePermission {
     }
     public void setSourcePackageSetting(PackageSettingBase sourcePackageSetting) {
         this.sourcePackageSetting = sourcePackageSetting;
-    }
-
-    public void setPermissionDefinitionChanged(boolean shouldOverride) {
-        mPermissionDefinitionChanged = shouldOverride;
     }
 
     public int[] computeGids(int userId) {
@@ -297,7 +286,6 @@ public final class BasePermission {
             boolean chatty) {
         final PackageSettingBase pkgSetting = (PackageSettingBase) pkg.mExtras;
         // Allow system apps to redefine non-system permissions
-        boolean ownerChanged = false;
         if (bp != null && !Objects.equals(bp.sourcePackageName, p.info.packageName)) {
             final boolean currentOwnerIsSystem = (bp.perm != null
                     && bp.perm.owner.isSystem());
@@ -313,7 +301,6 @@ public final class BasePermission {
                     String msg = "New decl " + p.owner + " of permission  "
                             + p.info.name + " is system; overriding " + bp.sourcePackageName;
                     PackageManagerService.reportSettingsProblem(Log.WARN, msg);
-                    ownerChanged = true;
                     bp = null;
                 }
             }
@@ -321,7 +308,6 @@ public final class BasePermission {
         if (bp == null) {
             bp = new BasePermission(p.info.name, p.info.packageName, TYPE_NORMAL);
         }
-        boolean wasNonRuntime = !bp.isRuntime();
         StringBuilder r = null;
         if (bp.perm == null) {
             if (bp.sourcePackageName == null
@@ -364,11 +350,6 @@ public final class BasePermission {
         }
         if (bp.perm == p) {
             bp.protectionLevel = p.info.protectionLevel;
-        }
-        if (bp.isRuntime() && (ownerChanged || wasNonRuntime)) {
-            // If this is a runtime permission and the owner has changed, or this was a normal
-            // permission, then permission state should be cleaned up
-            bp.mPermissionDefinitionChanged = true;
         }
         if (PackageManagerService.DEBUG_PACKAGE_SCANNING && r != null) {
             Log.d(TAG, "  Permissions: " + r);

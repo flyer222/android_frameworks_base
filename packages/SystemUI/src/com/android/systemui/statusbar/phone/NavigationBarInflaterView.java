@@ -58,7 +58,6 @@ public class NavigationBarInflaterView extends FrameLayout
     public static final String NAV_BAR_VIEWS = "sysui_nav_bar";
     public static final String NAV_BAR_LEFT = "sysui_nav_bar_left";
     public static final String NAV_BAR_RIGHT = "sysui_nav_bar_right";
-    public static final String NAV_BAR_INVERSE = "sysui_nav_bar_inverse";
 
     public static final String MENU_IME_ROTATE = "menu_ime";
     public static final String BACK = "back";
@@ -70,6 +69,10 @@ public class NavigationBarInflaterView extends FrameLayout
     public static final String LEFT = "left";
     public static final String RIGHT = "right";
     public static final String CONTEXTUAL = "contextual";
+    public static final String VOLUME_ADD = "volume_add";
+    public static final String VOLUME_SUB = "volume_sub";
+    public static final String SCREENSHOT = "screenshot";
+    public static final String POWEROFF = "poweroff";
 
     public static final String GRAVITY_SEPARATOR = ";";
     public static final String BUTTON_SEPARATOR = ",";
@@ -103,8 +106,6 @@ public class NavigationBarInflaterView extends FrameLayout
     private boolean mUsingCustomLayout;
 
     private OverviewProxyService mOverviewProxyService;
-
-    private boolean mInverseLayout;
 
     public NavigationBarInflaterView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -155,7 +156,7 @@ public class NavigationBarInflaterView extends FrameLayout
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         Dependency.get(TunerService.class).addTunable(this, NAV_BAR_VIEWS, NAV_BAR_LEFT,
-                NAV_BAR_RIGHT, NAV_BAR_INVERSE);
+                NAV_BAR_RIGHT);
         Dependency.get(PluginManager.class).addPluginListener(this,
                 NavBarButtonProvider.class, true /* Allow multiple */);
     }
@@ -178,16 +179,7 @@ public class NavigationBarInflaterView extends FrameLayout
         } else if (NAV_BAR_LEFT.equals(key) || NAV_BAR_RIGHT.equals(key)) {
             clearViews();
             inflateLayout(mCurrentLayout);
-        } else if (NAV_BAR_INVERSE.equals(key)) {
-            mInverseLayout = TunerService.parseIntegerSwitch(newValue, false);
-            updateLayoutInversion();
         }
-    }
-
-    @Override
-    public void onConfigurationChanged(Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        updateLayoutInversion();
     }
 
     public void onLikelyDefaultLayoutChange() {
@@ -291,19 +283,6 @@ public class NavigationBarInflaterView extends FrameLayout
         inflateButtons(end, mRot90.findViewById(R.id.ends_group), !isRot0Landscape, false);
 
         updateButtonDispatchersCurrentView();
-    }
-
-    private void updateLayoutInversion() {
-        if (mInverseLayout) {
-            Configuration config = mContext.getResources().getConfiguration();
-            if (config.getLayoutDirection() == View.LAYOUT_DIRECTION_RTL) {
-                setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-            } else {
-                setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-            }
-        } else {
-            setLayoutDirection(View.LAYOUT_DIRECTION_INHERIT);
-        }
     }
 
     private void addGravitySpacer(LinearLayout layout) {
@@ -410,6 +389,14 @@ public class NavigationBarInflaterView extends FrameLayout
             v = inflater.inflate(R.layout.back, parent, false);
         } else if (RECENT.equals(button)) {
             v = inflater.inflate(R.layout.recent_apps, parent, false);
+        } else if (VOLUME_ADD.equals(button)) {
+            v = inflater.inflate(R.layout.volume_add, parent, false);
+        } else if (VOLUME_SUB.equals(button)) {
+            v = inflater.inflate(R.layout.volume_sub, parent, false);
+        } else if (SCREENSHOT.equals(button)) {
+            v = inflater.inflate(R.layout.screenshot, parent, false);
+        } else if (POWEROFF.equals(button)) {
+            v = inflater.inflate(R.layout.poweroff, parent, false);
         } else if (MENU_IME_ROTATE.equals(button)) {
             v = inflater.inflate(R.layout.menu_ime, parent, false);
         } else if (NAVSPACE.equals(button)) {
@@ -500,9 +487,7 @@ public class NavigationBarInflaterView extends FrameLayout
 
     private void clearAllChildren(ViewGroup group) {
         for (int i = 0; i < group.getChildCount(); i++) {
-            if (group.getChildAt(i).getId() != R.id.dpad_group) {
-                ((ViewGroup) group.getChildAt(i)).removeAllViews();
-            }
+            ((ViewGroup) group.getChildAt(i)).removeAllViews();
         }
     }
 

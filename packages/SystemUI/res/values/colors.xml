@@ -17,6 +17,8 @@
  */
 -->
 <resources>
+    <color name="power_long_press_focus">#dcdcdc</color>
+    <color name="power_long_press_selected">#808080</color>
     <drawable name="notification_number_text_color">#ffffffff</drawable>
     <drawable name="ticker_background_color">#ff1d1d1d</drawable>
     <drawable name="system_bar_background">@color/system_bar_background_opaque</drawable>
@@ -137,10 +139,8 @@
 
     <color name="remote_input_accent">#eeeeee</color>
 
-    <color name="quick_step_track_background_background_dark">#1F000000</color>
-    <color name="quick_step_track_background_background_light">#33FFFFFF</color>
-    <color name="quick_step_track_background_foreground_dark">#38000000</color>
-    <color name="quick_step_track_background_foreground_light">#59FFFFFF</color>
+    <color name="quick_step_track_background_dark">#61000000</color>
+    <color name="quick_step_track_background_light">#33FFFFFF</color>
 
     <!-- Keyboard shortcuts colors -->
     <color name="ksh_application_group_color">#fff44336</color>

@@ -287,11 +287,6 @@ public class StorageNotification extends SystemUI {
     }
 
     private void onPublicVolumeStateChangedInternal(VolumeInfo vol) {
-        // Do not notify for volumes on non-removable disks
-        if (vol.disk.isNonRemovable()) {
-            return;
-        }
-
         Log.d(TAG, "Notifying about public volume: " + vol.toString());
 
         final Notification notif;
@@ -357,8 +352,9 @@ public class StorageNotification extends SystemUI {
         final VolumeRecord rec = mStorageManager.findRecordByUuid(vol.getFsUuid());
         final DiskInfo disk = vol.getDisk();
 
-        // Don't annoy when user dismissed in past.
-        if (rec.isSnoozed() && (disk.isAdoptable() || disk.isSd())) {
+        // Don't annoy when user dismissed in past.  (But make sure the disk is adoptable; we
+        // used to allow snoozing non-adoptable disks too.)
+        if (rec.isSnoozed() && disk.isAdoptable()) {
             return null;
         }
 
@@ -393,11 +389,8 @@ public class StorageNotification extends SystemUI {
                             buildUnmountPendingIntent(vol)))
                     .setContentIntent(browseIntent)
                     .setCategory(Notification.CATEGORY_SYSTEM);
-            // USB disks notification can be persistent
-            if (disk.isUsb()) {
-                builder.setOngoing(true);
-            }
-            if (disk.isAdoptable() || disk.isSd()) {
+            // Non-adoptable disks can't be snoozed.
+            if (disk.isAdoptable()) {
                 builder.setDeleteIntent(buildSnoozeIntent(vol.getFsUuid()));
             }
 

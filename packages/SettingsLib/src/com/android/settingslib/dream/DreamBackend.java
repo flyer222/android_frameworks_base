@@ -36,12 +36,12 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.util.Xml;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.IOException;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -97,15 +97,15 @@ public class DreamBackend {
     }
 
     public DreamBackend(Context context) {
-        mContext = context.getApplicationContext();
+        mContext = context;
         mDreamManager = IDreamManager.Stub.asInterface(
                 ServiceManager.getService(DreamService.DREAM_SERVICE));
         mComparator = new DreamInfoComparator(getDefaultDream());
-        mDreamsEnabledByDefault = mContext.getResources()
+        mDreamsEnabledByDefault = context.getResources()
                 .getBoolean(com.android.internal.R.bool.config_dreamsEnabledByDefault);
-        mDreamsActivatedOnSleepByDefault = mContext.getResources()
+        mDreamsActivatedOnSleepByDefault = context.getResources()
                 .getBoolean(com.android.internal.R.bool.config_dreamsActivatedOnSleepByDefault);
-        mDreamsActivatedOnDockByDefault = mContext.getResources()
+        mDreamsActivatedOnDockByDefault = context.getResources()
                 .getBoolean(com.android.internal.R.bool.config_dreamsActivatedOnDockByDefault);
     }
 
@@ -256,12 +256,11 @@ public class DreamBackend {
         }
     }
 
-    public void launchSettings(Context uiContext, DreamInfo dreamInfo) {
+    public void launchSettings(DreamInfo dreamInfo) {
         logd("launchSettings(%s)", dreamInfo);
-        if (dreamInfo == null || dreamInfo.settingsComponentName == null) {
+        if (dreamInfo == null || dreamInfo.settingsComponentName == null)
             return;
-        }
-        uiContext.startActivity(new Intent().setComponent(dreamInfo.settingsComponentName));
+        mContext.startActivity(new Intent().setComponent(dreamInfo.settingsComponentName));
     }
 
     public void preview(DreamInfo dreamInfo) {

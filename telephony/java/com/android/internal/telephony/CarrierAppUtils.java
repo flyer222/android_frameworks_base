@@ -21,6 +21,7 @@ import android.content.ContentResolver;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.IPackageManager;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.os.RemoteException;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
@@ -144,18 +145,6 @@ public final class CarrierAppUtils {
                         telephonyManager.checkCarrierPrivilegesForPackageAnyPhone(packageName) ==
                                 TelephonyManager.CARRIER_PRIVILEGE_STATUS_HAS_ACCESS;
 
-                // add hiddenUntilInstalled flag for carrier apps and associated apps
-                packageManager.setSystemAppHiddenUntilInstalled(packageName, true);
-                List<ApplicationInfo> associatedAppList = associatedApps.get(packageName);
-                if (associatedAppList != null) {
-                    for (ApplicationInfo associatedApp : associatedAppList) {
-                        packageManager.setSystemAppHiddenUntilInstalled(
-                                associatedApp.packageName,
-                                true
-                        );
-                    }
-                }
-
                 if (hasPrivileges) {
                     // Only update enabled state for the app on /system. Once it has been
                     // updated we shouldn't touch it.
@@ -163,14 +152,9 @@ public final class CarrierAppUtils {
                             && (ai.enabledSetting ==
                             PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
                             || ai.enabledSetting ==
-                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED
-                            || (ai.flags & ApplicationInfo.FLAG_INSTALLED) == 0)) {
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED)) {
                         Slog.i(TAG, "Update state(" + packageName + "): ENABLED for user "
                                 + userId);
-                        packageManager.setSystemAppInstallState(
-                                packageName,
-                                true /*installed*/,
-                                userId);
                         packageManager.setApplicationEnabledSetting(
                                 packageName,
                                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
@@ -180,20 +164,15 @@ public final class CarrierAppUtils {
                     }
 
                     // Also enable any associated apps for this carrier app.
+                    List<ApplicationInfo> associatedAppList = associatedApps.get(packageName);
                     if (associatedAppList != null) {
                         for (ApplicationInfo associatedApp : associatedAppList) {
                             if (associatedApp.enabledSetting ==
                                     PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
                                     || associatedApp.enabledSetting ==
-                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED
-                                    || (associatedApp.flags
-                                    & ApplicationInfo.FLAG_INSTALLED) == 0) {
+                                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED) {
                                 Slog.i(TAG, "Update associated state(" + associatedApp.packageName
                                         + "): ENABLED for user " + userId);
-                                packageManager.setSystemAppInstallState(
-                                        associatedApp.packageName,
-                                        true /*installed*/,
-                                        userId);
                                 packageManager.setApplicationEnabledSetting(
                                         associatedApp.packageName,
                                         PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
@@ -211,33 +190,36 @@ public final class CarrierAppUtils {
                     // updated we shouldn't touch it.
                     if (!ai.isUpdatedSystemApp()
                             && ai.enabledSetting ==
-                            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-                            && (ai.flags & ApplicationInfo.FLAG_INSTALLED) != 0) {
+                            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
                         Slog.i(TAG, "Update state(" + packageName
                                 + "): DISABLED_UNTIL_USED for user " + userId);
-                        packageManager.setSystemAppInstallState(
+                        packageManager.setApplicationEnabledSetting(
                                 packageName,
-                                false /*installed*/,
-                                userId);
+                                PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED,
+                                0,
+                                userId,
+                                callingPackage);
                     }
 
                     // Also disable any associated apps for this carrier app if this is the first
                     // run. We avoid doing this a second time because it is brittle to rely on the
                     // distinction between "default" and "enabled".
                     if (!hasRunOnce) {
+                        List<ApplicationInfo> associatedAppList = associatedApps.get(packageName);
                         if (associatedAppList != null) {
                             for (ApplicationInfo associatedApp : associatedAppList) {
                                 if (associatedApp.enabledSetting
-                                        == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
-                                        && (associatedApp.flags
-                                        & ApplicationInfo.FLAG_INSTALLED) != 0) {
+                                        == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
                                     Slog.i(TAG,
                                             "Update associated state(" + associatedApp.packageName
                                                     + "): DISABLED_UNTIL_USED for user " + userId);
-                                    packageManager.setSystemAppInstallState(
+                                    packageManager.setApplicationEnabledSetting(
                                             associatedApp.packageName,
-                                            false /*installed*/,
-                                            userId);
+                                            PackageManager
+                                                    .COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED,
+                                            0,
+                                            userId,
+                                            callingPackage);
                                 }
                             }
                         }
@@ -375,8 +357,7 @@ public final class CarrierAppUtils {
             String packageName) {
         try {
             ApplicationInfo ai = packageManager.getApplicationInfo(packageName,
-                    PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS
-                    | PackageManager.MATCH_HIDDEN_UNTIL_INSTALLED_COMPONENTS, userId);
+                    PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS, userId);
             if (ai != null && ai.isSystemApp()) {
                 return ai;
             }

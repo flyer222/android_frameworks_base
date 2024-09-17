@@ -19,7 +19,6 @@ package com.android.server.wm;
 import static android.app.WindowConfiguration.WINDOWING_MODE_PINNED;
 import static android.app.WindowConfiguration.WINDOWING_MODE_SPLIT_SCREEN_PRIMARY;
 import static android.app.WindowConfiguration.WINDOWING_MODE_UNDEFINED;
-import static android.content.pm.ActivityInfo.COLOR_MODE_DEFAULT;
 import static android.content.pm.ActivityInfo.CONFIG_ORIENTATION;
 import static android.content.pm.ActivityInfo.CONFIG_SCREEN_SIZE;
 import static android.content.pm.ActivityInfo.SCREEN_ORIENTATION_BEHIND;
@@ -38,7 +37,6 @@ import static com.android.server.policy.WindowManagerPolicy.FINISH_LAYOUT_REDO_A
 import static com.android.server.policy.WindowManagerPolicy.FINISH_LAYOUT_REDO_WALLPAPER;
 import static android.view.WindowManager.TRANSIT_UNSET;
 
-import static com.android.server.wm.AppTransition.MAX_APP_TRANSITION_DURATION;
 import static com.android.server.wm.WindowManagerDebugConfig.DEBUG_ADD_REMOVE;
 import static com.android.server.wm.WindowManagerDebugConfig.DEBUG_ANIM;
 import static com.android.server.wm.WindowManagerDebugConfig.DEBUG_APP_TRANSITIONS;
@@ -354,10 +352,6 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
             if (nowDrawn) {
                 if (controller != null) {
                     controller.reportWindowsDrawn();
-                }
-            } else {
-                if (controller != null) {
-                    controller.reportWindowsNotDrawn();
                 }
             }
             reportedDrawn = nowDrawn;
@@ -1383,7 +1377,7 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
             setAppLayoutChanges(FINISH_LAYOUT_REDO_ANIM, "checkAppWindowsReadyToShow");
 
             // We can now show all of the drawn windows!
-            if (!mService.mOpeningApps.contains(this) && canShowWindows()) {
+            if (!mService.mOpeningApps.contains(this)) {
                 showAllWindowsLocked();
             }
         }
@@ -1844,16 +1838,7 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
                 displayConfig.uiMode, displayConfig.orientation, frame, displayFrame, insets,
                 surfaceInsets, stableInsets, isVoiceInteraction, freeform, getTask().mTaskId);
         if (a != null) {
-            if (a != null) {
-                // Setup the maximum app transition duration to prevent malicious app may set a long
-                // animation duration or infinite repeat counts for the app transition through
-                // ActivityOption#makeCustomAnimation or WindowManager#overridePendingTransition.
-                a.restrictDuration(MAX_APP_TRANSITION_DURATION);
-            }
-            if (DEBUG_ANIM) {
-                logWithStack(TAG, "Loaded animation " + a + " for " + this
-                        + ", duration: " + ((a != null) ? a.getDuration() : 0));
-            }
+            if (DEBUG_ANIM) logWithStack(TAG, "Loaded animation " + a + " for " + this);
             final int containingWidth = frame.width();
             final int containingHeight = frame.height();
             a.initialize(containingWidth, containingHeight, width, height);
@@ -2284,22 +2269,5 @@ class AppWindowToken extends WindowToken implements WindowManagerService.AppFree
      */
     boolean isClosingOrEnteringPip() {
         return (isAnimating() && hiddenRequested) || mWillCloseOrEnterPip;
-    }
-
-    /**
-     * @return Whether we are allowed to show non-starting windows at the moment. We disallow
-     *         showing windows during transitions in case we have windows that have wide-color-gamut
-     *         color mode set to avoid jank in the middle of the transition.
-     */
-    boolean canShowWindows() {
-        return allDrawn && !(isReallyAnimating() && hasNonDefaultColorWindow());
-    }
-
-    /**
-     * @return true if we have a window that has a non-default color mode set; false otherwise.
-     */
-    private boolean hasNonDefaultColorWindow() {
-        return forAllWindows(ws -> ws.mAttrs.getColorMode() != COLOR_MODE_DEFAULT,
-                true /* topToBottom */);
     }
 }

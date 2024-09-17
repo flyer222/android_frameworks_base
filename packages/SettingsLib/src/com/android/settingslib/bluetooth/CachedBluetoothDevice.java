@@ -27,7 +27,6 @@ import android.media.AudioManager;
 import android.os.ParcelUuid;
 import android.os.SystemClock;
 import android.text.TextUtils;
-import android.util.EventLog;
 import android.util.Log;
 import android.bluetooth.BluetoothAdapter;
 import android.support.annotation.VisibleForTesting;
@@ -144,8 +143,8 @@ public class CachedBluetoothDevice implements Comparable<CachedBluetoothDevice> 
 
     void onProfileStateChanged(LocalBluetoothProfile profile, int newProfileState) {
         if (Utils.D) {
-            Log.d(TAG, "onProfileStateChanged: profile " + profile + ", device=" + mDevice
-                    + ", newProfileState " + newProfileState);
+            Log.d(TAG, "onProfileStateChanged: profile " + profile +
+                    " newProfileState " + newProfileState);
         }
         if (mLocalAdapter.getBluetoothState() == BluetoothAdapter.STATE_TURNING_OFF)
         {
@@ -223,10 +222,6 @@ public class CachedBluetoothDevice implements Comparable<CachedBluetoothDevice> 
 
         mConnectAttempted = SystemClock.elapsedRealtime();
         connectWithoutResettingTimer(connectAllProfiles);
-    }
-
-    public boolean isHearingAidDevice() {
-        return mHiSyncId != BluetoothHearingAid.HI_SYNC_ID_INVALID;
     }
 
     void onBondingDockConnect() {
@@ -964,9 +959,10 @@ public class CachedBluetoothDevice implements Comparable<CachedBluetoothDevice> 
                         == BluetoothClass.Device.AUDIO_VIDEO_HANDSFREE ||
                     mDevice.getBluetoothClass().getDeviceClass()
                         == BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET) {
-                    EventLog.writeEvent(0x534e4554, "138529441", -1, "");
+                    setPhonebookPermissionChoice(CachedBluetoothDevice.ACCESS_ALLOWED);
+                } else {
+                    setPhonebookPermissionChoice(CachedBluetoothDevice.ACCESS_REJECTED);
                 }
-                setPhonebookPermissionChoice(CachedBluetoothDevice.ACCESS_REJECTED);
             }
         }
     }
@@ -1193,8 +1189,7 @@ public class CachedBluetoothDevice implements Comparable<CachedBluetoothDevice> 
      * @return {@code true} if {@code cachedBluetoothDevice} is a2dp device
      */
     public boolean isA2dpDevice() {
-        A2dpProfile a2dpProfile = mProfileManager.getA2dpProfile();
-        return a2dpProfile != null && a2dpProfile.getConnectionStatus(mDevice) ==
+        return mProfileManager.getA2dpProfile().getConnectionStatus(mDevice) ==
                 BluetoothProfile.STATE_CONNECTED;
     }
 
@@ -1202,17 +1197,16 @@ public class CachedBluetoothDevice implements Comparable<CachedBluetoothDevice> 
      * @return {@code true} if {@code cachedBluetoothDevice} is HFP device
      */
     public boolean isHfpDevice() {
-        HeadsetProfile headsetProfile = mProfileManager.getHeadsetProfile();
-        return headsetProfile != null && headsetProfile.getConnectionStatus(mDevice) ==
+        return mProfileManager.getHeadsetProfile().getConnectionStatus(mDevice) ==
                 BluetoothProfile.STATE_CONNECTED;
     }
 
     /**
-     * @return {@code true} if {@code cachedBluetoothDevice} is Hearing Aid device
+     * @return {@code true} if {@code cachedBluetoothDevice} is a2dpsink device
      */
-    public boolean isConnectedHearingAidDevice() {
-        HearingAidProfile hearingAidProfile = mProfileManager.getHearingAidProfile();
-        return hearingAidProfile != null && hearingAidProfile.getConnectionStatus(mDevice) ==
+    public boolean isA2dpSinkDevice() {
+        return mProfileManager.getA2dpSinkProfile().getConnectionStatus(mDevice) ==
                 BluetoothProfile.STATE_CONNECTED;
     }
+
 }

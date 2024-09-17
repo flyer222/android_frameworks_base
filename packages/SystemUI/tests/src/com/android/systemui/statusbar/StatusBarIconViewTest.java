@@ -35,7 +35,6 @@ import android.content.ContextWrapper;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.Icon;
 import android.os.UserHandle;
@@ -122,14 +121,5 @@ public class StatusBarIconViewTest extends SysuiTestCase {
         color = mIconView.getContrastedStaticDrawableColor(0xcc000000);
         assertEquals("Transparent backgrounds should fallback to drawable color",
                 color, mIconView.getStaticDrawableColor());
-    }
-
-    @Test
-    public void testGiantImageNotAllowed() {
-        Bitmap largeBitmap = Bitmap.createBitmap(6000, 6000, Bitmap.Config.ARGB_8888);
-        Icon icon = Icon.createWithBitmap(largeBitmap);
-        StatusBarIcon largeIcon = new StatusBarIcon(UserHandle.ALL, "mockPackage",
-                icon, 0, 0, "");
-        assertFalse(mIconView.set(largeIcon));
     }
 }

@@ -273,8 +273,8 @@ public class NavigationBarFragment extends Fragment implements Callbacks {
         super.onViewCreated(view, savedInstanceState);
         mNavigationBarView = (NavigationBarView) view;
 
-        mNavigationBarView.setComponents(mRecents, mDivider, mStatusBar.getPanel());
         mNavigationBarView.setDisabledFlags(mDisabledFlags1);
+        mNavigationBarView.setComponents(mRecents, mDivider, mStatusBar.getPanel());
         mNavigationBarView.setOnVerticalChangedListener(this::onVerticalChanged);
         mNavigationBarView.setOnTouchListener(this::onNavigationTouch);
         if (savedInstanceState != null) {
@@ -756,8 +756,17 @@ public class NavigationBarFragment extends Fragment implements Callbacks {
 
         ButtonDispatcher homeButton = mNavigationBarView.getHomeButton();
         homeButton.setOnTouchListener(this::onHomeTouch);
-        homeButton.setLongClickable(true);
         homeButton.setOnLongClickListener(this::onHomeLongClick);
+
+        ButtonDispatcher volumeAddButton = mNavigationBarView.getVolumeAddButton();
+        ButtonDispatcher volumeSubButton = mNavigationBarView.getVolumeSubButton();
+        ButtonDispatcher screenshotButton = mNavigationBarView.getScreenshotButton();
+        ButtonDispatcher poweroffButton = mNavigationBarView.getPoweroffButton();
+
+        volumeAddButton.setVisibility(View.VISIBLE);
+        volumeSubButton.setVisibility(View.VISIBLE);
+        screenshotButton.setVisibility(View.VISIBLE);
+        poweroffButton.setVisibility(View.VISIBLE);
 
         ButtonDispatcher accessibilityButton = mNavigationBarView.getAccessibilityButton();
         accessibilityButton.setOnClickListener(this::onAccessibilityClick);
@@ -814,9 +823,17 @@ public class NavigationBarFragment extends Fragment implements Callbacks {
                 && ActivityManagerWrapper.getInstance().isScreenPinningActive()) {
             return onLongPressBackHome(v);
         }
-        KeyButtonView keyButtonView = (KeyButtonView) v;
-        keyButtonView.sendEvent(KeyEvent.ACTION_DOWN, KeyEvent.FLAG_LONG_PRESS);
-        keyButtonView.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
+        if (shouldDisableNavbarGestures()) {
+            return false;
+        }
+        mNavigationBarView.onNavigationButtonLongPress(v);
+        mMetricsLogger.action(MetricsEvent.ACTION_ASSIST_LONG_PRESS);
+        mAssistManager.startAssist(new Bundle() /* args */);
+        mStatusBar.awakenDreams();
+
+        if (mNavigationBarView != null) {
+            mNavigationBarView.abortCurrentGesture();
+        }
         return true;
     }
 
@@ -907,14 +924,10 @@ public class NavigationBarFragment extends Fragment implements Callbacks {
                     // When exiting refresh disabled flags.
                     mNavigationBarView.updateNavButtonIcons();
                     return true;
-                } else if (v.getId() == R.id.recent_apps) {
-                    // Send long press key event so that Lineage button handling can intercept
-                    KeyButtonView keyButtonView = (KeyButtonView) v;
-                    keyButtonView.sendEvent(KeyEvent.ACTION_DOWN, KeyEvent.FLAG_LONG_PRESS);
-                    keyButtonView.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_LONG_CLICKED);
-                    return true;
-                } else {
-                    onHomeLongClick(mNavigationBarView.getHomeButton().getCurrentView());
+                } else if (v.getId() == btnId2) {
+                    return btnId2 == R.id.recent_apps
+                            ? onLongPressRecents()
+                            : onHomeLongClick(mNavigationBarView.getHomeButton().getCurrentView());
                 }
             }
             if (sendBackLongPress) {

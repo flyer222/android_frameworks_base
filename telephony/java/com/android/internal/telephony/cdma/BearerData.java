@@ -20,6 +20,7 @@ import android.content.res.Resources;
 import android.telephony.SmsCbCmasInfo;
 import android.telephony.cdma.CdmaSmsCbProgramData;
 import android.telephony.cdma.CdmaSmsCbProgramResults;
+import android.text.format.Time;
 import android.telephony.Rlog;
 
 import com.android.internal.telephony.GsmAlphabet;
@@ -31,10 +32,8 @@ import com.android.internal.telephony.uicc.IccUtils;
 import com.android.internal.util.BitwiseInputStream;
 import com.android.internal.util.BitwiseOutputStream;
 
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.TimeZone;
 
 /**
  * An object to encode and decode CDMA SMS bearer data.
@@ -229,23 +228,10 @@ public final class BearerData {
     /**
      * 6-byte-field, see 3GPP2 C.S0015-B, v2, 4.5.4
      */
-    public static class TimeStamp {
-
-        public int second;
-        public int minute;
-        public int hour;
-        public int monthDay;
-
-        /** Month [0-11] */
-        public int month;
-
-        /** Full year. For example, 1970. */
-        public int year;
-
-        private ZoneId mZoneId;
+    public static class TimeStamp extends Time {
 
         public TimeStamp() {
-            mZoneId = ZoneId.systemDefault();   // 3GPP2 timestamps use the local timezone
+            super(TimeZone.getDefault().getID());   // 3GPP2 timestamps use the local timezone
         }
 
         public static TimeStamp fromByteArray(byte[] data) {
@@ -271,14 +257,6 @@ public final class BearerData {
             ts.second = second;
             return ts;
         }
-
-        public long toMillis() {
-            LocalDateTime localDateTime =
-                    LocalDateTime.of(year, month + 1, monthDay, hour, minute, second);
-            Instant instant = localDateTime.toInstant(mZoneId.getRules().getOffset(localDateTime));
-            return instant.toEpochMilli();
-        }
-
 
         @Override
         public String toString() {

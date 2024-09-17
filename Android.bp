@@ -402,7 +402,6 @@ java_library {
         "core/java/com/android/internal/widget/ICheckCredentialProgressCallback.aidl",
         "core/java/com/android/internal/widget/ILockSettings.aidl",
         "core/java/com/android/internal/widget/IRemoteViewsFactory.aidl",
-        "core/java/com/nvidia/NvCPLSvc/INvCPLRemoteService.aidl",
         "keystore/java/android/security/IKeyChainAliasCallback.aidl",
         "keystore/java/android/security/IKeyChainService.aidl",
         "location/java/android/location/IBatchedLocationCallback.aidl",
@@ -585,8 +584,6 @@ java_library {
         "packages/services/Proxy/com/android/net/IProxyPortListener.aidl",
         "core/java/android/service/quicksettings/IQSService.aidl",
         "core/java/android/service/quicksettings/IQSTileService.aidl",
-        "telephony/java/com/android/internal/telephony/ISmsSecurityService.aidl",
-        "telephony/java/com/android/internal/telephony/ISmsSecurityAgent.aidl",
 
         ":libupdate_engine_aidl",
 
@@ -670,7 +667,6 @@ java_library {
         "framework-protos",
         "android.hidl.base-V1.0-java",
         "android.hardware.cas-V1.0-java",
-        "android.hardware.configstore-V1.1-java",
         "android.hardware.contexthub-V1.0-java",
         "android.hardware.health-V1.0-java-constants",
         "android.hardware.thermal-V1.0-java-constants",
@@ -734,24 +730,22 @@ gensrcs {
     name: "framework-javastream-protos",
     depfile: true,
 
-    tool_files: [ "tools/genprotos.sh", ],
     tools: [
         "aprotoc",
         "protoc-gen-javastream",
         "soong_zip",
     ],
 
-    // TODO This should not be needed. If you set a custom OUT_DIR or OUT_DIR_COMMON_BASE you can
-    // end up with a command that is extremely long, potentially going passed MAX_ARG_STRLEN due to
-    // the way sbox rewrites the command. See b/70221552.
-    cmd: "$(location tools/genprotos.sh) " +
-              " $(location aprotoc) " +
-              " $(location protoc-gen-javastream) " +
-              " $(location soong_zip) " +
-              " $(genDir) " +
-              " $(depfile) " +
-              " $(in) " +
-              " $(out)",
+    cmd: "mkdir -p $(genDir)/$(in) " +
+        "&& $(location aprotoc) " +
+        "  --plugin=$(location protoc-gen-javastream) " +
+        "  --dependency_out=$(depfile) " +
+        "  --javastream_out=$(genDir)/$(in) " +
+        "  -Iexternal/protobuf/src " +
+        "  -I . " +
+        "  $(in) " +
+        "&& $(location soong_zip) -jar -o $(out) -C $(genDir)/$(in) -D $(genDir)/$(in)",
+
     srcs: [
         "core/proto/**/*.proto",
         "libs/incident/**/*.proto",

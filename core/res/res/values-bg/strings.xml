@@ -1175,9 +1175,6 @@
     <skip />
     <string name="wifi_no_internet" msgid="8938267198124654938">"Wi-Fi мрежата няма достъп до интернет"</string>
     <string name="wifi_no_internet_detailed" msgid="8083079241212301741">"Докоснете за опции"</string>
-    <string name="wifi_softap_config_change" msgid="8475911871165857607">"Промени в настройките ви за точка за достъп"</string>
-    <string name="wifi_softap_config_change_summary" msgid="7601233252456548891">"Честотната лента на точката ви за достъп е променена."</string>
-    <string name="wifi_softap_config_change_detailed" msgid="8022936822860678033">"Това устройство не поддържа предпочитанието ви за използване само на честотната лента от 5 ГХц. Вместо това то ще я ползва, когато е възможно."</string>
     <string name="network_switch_metered" msgid="4671730921726992671">"Превключи се към <xliff:g id="NETWORK_TYPE">%1$s</xliff:g>"</string>
     <string name="network_switch_metered_detail" msgid="775163331794506615">"Устройството използва <xliff:g id="NEW_NETWORK">%1$s</xliff:g>, когато <xliff:g id="PREVIOUS_NETWORK">%2$s</xliff:g> няма достъп до интернет. Възможно е да бъдете таксувани."</string>
     <string name="network_switch_metered_toast" msgid="5779283181685974304">"Превключи се от <xliff:g id="PREVIOUS_NETWORK">%1$s</xliff:g> към <xliff:g id="NEW_NETWORK">%2$s</xliff:g>"</string>
@@ -1345,7 +1342,6 @@
     <string name="deny" msgid="2081879885755434506">"Отказване"</string>
     <string name="permission_request_notification_title" msgid="6486759795926237907">"Иска се разрешение"</string>
     <string name="permission_request_notification_with_subtitle" msgid="8530393139639560189">"Иска се разрешение\nза профила <xliff:g id="ACCOUNT">%s</xliff:g>."</string>
-    <string name="permission_request_notification_for_app_with_subtitle" msgid="1298704005732851350">"Поискано е разрешение от <xliff:g id="APP">%1$s</xliff:g>\nза профила <xliff:g id="ACCOUNT">%2$s</xliff:g>."</string>
     <string name="forward_intent_to_owner" msgid="1207197447013960896">"Използвате това приложение извън служебния си потребителски профил"</string>
     <string name="forward_intent_to_work" msgid="621480743856004612">"Използвате това приложение в служебния си потребителски профил"</string>
     <string name="input_method_binding_label" msgid="1283557179944992649">"Метод на въвеждане"</string>

@@ -16,15 +16,7 @@
 
 package com.android.server.fingerprint;
 
-import static android.Manifest.permission.USE_BIOMETRIC;
-import static android.Manifest.permission.USE_FINGERPRINT;
-
-import android.app.ActivityManager;
-import android.app.IActivityManager;
-import android.content.ComponentName;
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.hardware.biometrics.fingerprint.V2_1.IBiometricsFingerprint;
 import android.hardware.biometrics.BiometricPrompt;
 import android.hardware.biometrics.IBiometricPromptReceiver;
@@ -34,19 +26,11 @@ import android.hardware.fingerprint.IFingerprintServiceReceiver;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
-import android.util.EventLog;
 import android.util.Slog;
 
-import com.android.internal.R;
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.internal.statusbar.IStatusBarService;
-
-import lineageos.app.LineageContextConstants;
-
-import java.util.List;
-
-import vendor.lineage.biometrics.fingerprint.inscreen.V1_0.IFingerprintInscreen;
 
 /**
  * A class to keep track of the authentication state for a given client.
@@ -69,9 +53,6 @@ public abstract class AuthenticationClient extends ClientMonitor {
     private boolean mInLockout;
     private final FingerprintManager mFingerprintManager;
     protected boolean mDialogDismissed;
-
-    private final boolean mHasFod;
-    private final String mKeyguardPackage;
 
     // Receives events from SystemUI and handles them before forwarding them to FingerprintDialog
     protected IBiometricPromptReceiver mDialogReceiver = new IBiometricPromptReceiver.Stub() {
@@ -115,11 +96,6 @@ public abstract class AuthenticationClient extends ClientMonitor {
         mStatusBarService = statusBarService;
         mFingerprintManager = (FingerprintManager) getContext()
                 .getSystemService(Context.FINGERPRINT_SERVICE);
-        mKeyguardPackage = ComponentName.unflattenFromString(context.getResources().getString(
-                com.android.internal.R.string.config_keyguardComponent)).getPackageName();
-
-        PackageManager packageManager = context.getPackageManager();
-        mHasFod = packageManager.hasSystemFeature(LineageContextConstants.Features.FOD);
     }
 
     @Override
@@ -180,68 +156,10 @@ public abstract class AuthenticationClient extends ClientMonitor {
         boolean result = false;
         boolean authenticated = fingerId != 0;
 
-        // Ensure authentication only succeeds if the client activity is on top or is keyguard.
-        boolean isBackgroundAuth = false;
-        if (authenticated && !isKeyguard(getContext(), getOwnerString())) {
-            final ActivityManager activityManager =
-                    (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE);
-            final IActivityManager activityManagerService = activityManager != null
-                    ? activityManager.getService()
-                    : null;
-            if (activityManagerService == null) {
-                Slog.e(TAG, "Unable to get activity manager service");
-                isBackgroundAuth = true;
-            } else {
-                try {
-                    final List<ActivityManager.RunningTaskInfo> tasks =
-                            activityManagerService.getTasks(1);
-                    if (tasks == null || tasks.isEmpty()) {
-                        Slog.e(TAG, "No running tasks reported");
-                        isBackgroundAuth = true;
-                    } else {
-                        final ComponentName topActivity = tasks.get(0).topActivity;
-                        if (topActivity == null) {
-                            Slog.e(TAG, "Unable to get top activity");
-                            isBackgroundAuth = true;
-                        } else {
-                            final String topPackage = topActivity.getPackageName();
-                            if (!topPackage.contentEquals(getOwnerString())) {
-                                Slog.e(TAG, "Background authentication detected, top: " + topPackage
-                                        + ", client: " + this);
-                                isBackgroundAuth = true;
-                            }
-                        }
-                    }
-                } catch (RemoteException e) {
-                    Slog.e(TAG, "Unable to get running tasks", e);
-                    isBackgroundAuth = true;
-                }
-            }
-        }
-
-        // Fail authentication if we can't confirm the client activity is on top.
-        if (isBackgroundAuth) {
-            Slog.e(TAG, "Failing possible background authentication");
-            authenticated = false;
-
-            // SafetyNet logging for exploitation attempts of b/159249069.
-            final ApplicationInfo appInfo = getContext().getApplicationInfo();
-            EventLog.writeEvent(0x534e4554, "159249069", appInfo != null ? appInfo.uid : -1,
-                    "Attempted background authentication");
-        }
-
         // If the fingerprint dialog is showing, notify authentication succeeded
         if (mBundle != null) {
             try {
                 if (authenticated) {
-                    // SafetyNet logging for b/159249069 if constraint is violated.
-                    if (isBackgroundAuth) {
-                        final ApplicationInfo appInfo = getContext().getApplicationInfo();
-                        EventLog.writeEvent(0x534e4554, "159249069",
-                                appInfo != null ? appInfo.uid : -1,
-                                "Successful background authentication! Dialog notified");
-                    }
-
                     mStatusBarService.onFingerprintAuthenticated();
                 } else {
                     mStatusBarService.onFingerprintHelp(getContext().getResources().getString(
@@ -260,14 +178,6 @@ public abstract class AuthenticationClient extends ClientMonitor {
                 if (!authenticated) {
                     receiver.onAuthenticationFailed(getHalDeviceId());
                 } else {
-                    // SafetyNet logging for b/159249069 if constraint is violated.
-                    if (isBackgroundAuth) {
-                        final ApplicationInfo appInfo = getContext().getApplicationInfo();
-                        EventLog.writeEvent(0x534e4554, "159249069",
-                                appInfo != null ? appInfo.uid : -1,
-                                "Successful background authentication! Receiver notified");
-                    }
-
                     if (DEBUG) {
                         Slog.v(TAG, "onAuthenticated(owner=" + getOwnerString()
                                 + ", id=" + fingerId + ", gp=" + groupId + ")");
@@ -316,13 +226,6 @@ public abstract class AuthenticationClient extends ClientMonitor {
             }
             result |= lockoutMode != LOCKOUT_NONE; // in a lockout mode
         } else {
-            // SafetyNet logging for b/159249069 if constraint is violated.
-            if (isBackgroundAuth) {
-                final ApplicationInfo appInfo = getContext().getApplicationInfo();
-                EventLog.writeEvent(0x534e4554, "159249069", appInfo != null ? appInfo.uid : -1,
-                        "Successful background authentication! Lockout reset");
-            }
-
             if (receiver != null) {
                 vibrateSuccess();
             }
@@ -330,28 +233,7 @@ public abstract class AuthenticationClient extends ClientMonitor {
             resetFailedAttempts();
             onStop();
         }
-        if (result && mHasFod) {
-            try {
-                mStatusBarService.hideInDisplayFingerprintView();
-            } catch (RemoteException e) {
-                Slog.e(TAG, "hideInDisplayFingerprintView failed", e);
-            }
-        }
         return result;
-    }
-
-    private static boolean isKeyguard(Context context, String clientPackage) {
-        final boolean hasFingerPermission = context.checkCallingOrSelfPermission(USE_FINGERPRINT)
-                    == PackageManager.PERMISSION_GRANTED;
-        final boolean hasBiometricPermission = context.checkCallingOrSelfPermission(USE_BIOMETRIC)
-                    == PackageManager.PERMISSION_GRANTED;
-        final boolean hasPermission = hasFingerPermission || hasBiometricPermission;
-
-        final ComponentName keyguardComponent = ComponentName.unflattenFromString(
-                context.getResources().getString(R.string.config_keyguardComponent));
-        final String keyguardPackage = keyguardComponent != null
-                ? keyguardComponent.getPackageName() : null;
-        return hasPermission && keyguardPackage != null && keyguardPackage.equals(clientPackage);
     }
 
     /**
@@ -363,21 +245,6 @@ public abstract class AuthenticationClient extends ClientMonitor {
         if (daemon == null) {
             Slog.w(TAG, "start authentication: no fingerprint HAL!");
             return ERROR_ESRCH;
-        }
-        if (mHasFod) {
-            IFingerprintInscreen fodDaemon = getFingerprintInScreenDaemon();
-            if (fodDaemon != null) {
-                try {
-                    fodDaemon.setLongPressEnabled(isKeyguard(getOwnerString()));
-                } catch (RemoteException e) {
-                    Slog.e(TAG, "setLongPressEnabled failed", e);
-                }
-            }
-            try {
-                mStatusBarService.showInDisplayFingerprintView();
-            } catch (RemoteException e) {
-                Slog.e(TAG, "showInDisplayFingerprintView failed", e);
-            }
         }
         onStart();
         try {
@@ -391,7 +258,7 @@ public abstract class AuthenticationClient extends ClientMonitor {
             if (DEBUG) Slog.w(TAG, "client " + getOwnerString() + " is authenticating...");
 
             // If authenticating with system dialog, show the dialog
-            if (!mHasFod && mBundle != null) {
+            if (mBundle != null) {
                 try {
                     mStatusBarService.showFingerprintDialog(mBundle, mDialogReceiver);
                 } catch (RemoteException e) {
@@ -405,27 +272,11 @@ public abstract class AuthenticationClient extends ClientMonitor {
         return 0; // success
     }
 
-    /**
-     * @param clientPackage
-     * @return true if this is keyguard package
-     */
-    private boolean isKeyguard(String clientPackage) {
-        return mKeyguardPackage.equals(clientPackage);
-    }
-
     @Override
     public int stop(boolean initiatedByClient) {
         if (mAlreadyCancelled) {
             Slog.w(TAG, "stopAuthentication: already cancelled!");
             return 0;
-        }
-
-        if (mHasFod) {
-            try {
-                mStatusBarService.hideInDisplayFingerprintView();
-            } catch (RemoteException e) {
-                Slog.e(TAG, "hideInDisplayFingerprintView failed", e);
-            }
         }
 
         onStop();
@@ -449,7 +300,7 @@ public abstract class AuthenticationClient extends ClientMonitor {
             // dialog, we do not need to hide it since it's already hidden.
             // If the device is in lockout, don't hide the dialog - it will automatically hide
             // after BiometricPrompt.HIDE_DIALOG_DELAY
-            if (!mHasFod && mBundle != null && !mDialogDismissed && !mInLockout) {
+            if (mBundle != null && !mDialogDismissed && !mInLockout) {
                 try {
                     mStatusBarService.hideFingerprintDialog();
                 } catch (RemoteException e) {

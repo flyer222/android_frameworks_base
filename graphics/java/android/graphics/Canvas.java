@@ -495,16 +495,6 @@ public class Canvas extends BaseCanvas {
     }
 
     /**
-     * @hide
-     * @param saveCount The save level to restore to.
-     * @param paint     This is copied and is applied to the area within the unclipped layer's
-     *                  bounds (e.g. equivalent to a drawPaint()) before restore() is called.
-     */
-    public void restoreUnclippedLayer(int saveCount, Paint paint) {
-        nRestoreUnclippedLayer(mNativeCanvasWrapper, saveCount, paint.getNativeInstance());
-    }
-
-    /**
      * Helper version of saveLayer() that takes 4 values rather than a RectF.
      *
      * As of API Level API level {@value Build.VERSION_CODES#P} the only valid
@@ -1337,9 +1327,6 @@ public class Canvas extends BaseCanvas {
     private static native int nSaveLayerAlpha(long nativeCanvas, float l, float t, float r, float b,
             int alpha, int layerFlags);
     @CriticalNative
-    private static native void nRestoreUnclippedLayer(long nativeCanvas, int saveCount,
-            long nativePaint);
-    @CriticalNative
     private static native boolean nRestore(long canvasHandle);
     @CriticalNative
     private static native void nRestoreToCount(long canvasHandle, int saveCount);
@@ -1604,9 +1591,9 @@ public class Canvas extends BaseCanvas {
      * Draw the specified circle using the specified paint. If radius is <= 0, then nothing will be
      * drawn. The circle will be filled or framed based on the Style in the paint.
      *
-     * @param cx The x-coordinate of the center of the circle to be drawn
-     * @param cy The y-coordinate of the center of the circle to be drawn
-     * @param radius The radius of the circle to be drawn
+     * @param cx The x-coordinate of the center of the cirle to be drawn
+     * @param cy The y-coordinate of the center of the cirle to be drawn
+     * @param radius The radius of the cirle to be drawn
      * @param paint The paint used to draw the circle
      */
     public void drawCircle(float cx, float cy, float radius, @NonNull Paint paint) {

@@ -18,7 +18,6 @@ package com.android.server.connectivity.tethering;
 
 import android.content.Context;
 import android.net.INetd;
-import android.net.NetworkRequest;
 import android.net.ip.RouterAdvertisementDaemon;
 import android.net.util.InterfaceParams;
 import android.net.util.NetdService;
@@ -64,9 +63,5 @@ public class TetheringDependencies {
 
     public boolean isTetheringSupported() {
         return true;
-    }
-
-    public NetworkRequest getDefaultNetworkRequest() {
-        return null;
     }
 }

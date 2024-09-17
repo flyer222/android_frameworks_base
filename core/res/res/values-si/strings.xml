@@ -1177,9 +1177,6 @@
     <skip />
     <string name="wifi_no_internet" msgid="8938267198124654938">"Wi-Fi සඳහා අන්තර්ජාල ප්‍රවේශය නැත"</string>
     <string name="wifi_no_internet_detailed" msgid="8083079241212301741">"විකල්ප සඳහා තට්ටු කරන්න"</string>
-    <string name="wifi_softap_config_change" msgid="8475911871165857607">"ඔබගේ හොට්ස්පොට් සැකසීම්වලට වෙනස් කිරීම්"</string>
-    <string name="wifi_softap_config_change_summary" msgid="7601233252456548891">"ඔබගේ හොට්ස්පොට් කලාපය වෙනස් වී ඇත."</string>
-    <string name="wifi_softap_config_change_detailed" msgid="8022936822860678033">"මෙම උපාංගය 5GHz සඳහා ඔබේ මනාපවලට සහාය නොදක්වයි. ඒ වෙනුවට, මෙම උපාංගය ලබා ගත හැකි විට 5GHz කලාපය භාවිතා කරනු ඇත."</string>
     <string name="network_switch_metered" msgid="4671730921726992671">"<xliff:g id="NETWORK_TYPE">%1$s</xliff:g> වෙත මාරු විය"</string>
     <string name="network_switch_metered_detail" msgid="775163331794506615">"උපාංගය <xliff:g id="NEW_NETWORK">%1$s</xliff:g> <xliff:g id="PREVIOUS_NETWORK">%2$s</xliff:g> සඳහා අන්තර්ජාල ප්‍රවේශය නැති විට භාවිත කරයි. ගාස්තු අදාළ විය හැකිය."</string>
     <string name="network_switch_metered_toast" msgid="5779283181685974304">"<xliff:g id="PREVIOUS_NETWORK">%1$s</xliff:g> සිට <xliff:g id="NEW_NETWORK">%2$s</xliff:g> වෙත මාරු විය"</string>
@@ -1347,7 +1344,6 @@
     <string name="deny" msgid="2081879885755434506">"ප්‍රතික්ෂේප කරන්න"</string>
     <string name="permission_request_notification_title" msgid="6486759795926237907">"අවසර ඉල්ලා සිටී"</string>
     <string name="permission_request_notification_with_subtitle" msgid="8530393139639560189">"<xliff:g id="ACCOUNT">%s</xliff:g> ගිණුම සඳහා\nඅවසර ඉල්ලන ලදි."</string>
-    <string name="permission_request_notification_for_app_with_subtitle" msgid="1298704005732851350">"<xliff:g id="ACCOUNT">%2$s</xliff:g> ගිණුම සඳහා <xliff:g id="APP">%1$s</xliff:g>\n විසින් ඉල්ලූ අවසරය"</string>
     <string name="forward_intent_to_owner" msgid="1207197447013960896">"මෙම යෙදුම ඔබගේ කාර්යාල පැතිකඩින් පිට දී ඔබ භාවිතා කරයි"</string>
     <string name="forward_intent_to_work" msgid="621480743856004612">"මෙම යෙදුම ඔබගේ පුද්ගලික කොටසේ ඔබ භාවිතා කරයි"</string>
     <string name="input_method_binding_label" msgid="1283557179944992649">"ආදාන ක්‍රමය"</string>

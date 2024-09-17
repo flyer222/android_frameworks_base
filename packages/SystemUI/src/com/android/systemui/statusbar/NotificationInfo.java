@@ -102,15 +102,8 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
     };
 
     private OnClickListener mOnStopOrMinimizeNotifications = v -> {
-        Runnable saveImportance = () -> {
-            mExitReason = NotificationCounters.BLOCKING_HELPER_STOP_NOTIFICATIONS;
-            swapContent(false);
-        };
-        if (mCheckSaveListener != null) {
-            mCheckSaveListener.checkSave(saveImportance, mSbn);
-        } else {
-            saveImportance.run();
-        }
+        mExitReason = NotificationCounters.BLOCKING_HELPER_STOP_NOTIFICATIONS;
+        swapContent(false);
     };
 
     private OnClickListener mOnUndo = v -> {
@@ -307,7 +300,15 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
 
     private void saveImportance() {
         if (!mIsNonblockable) {
-            updateImportance();
+            // Only go through the lock screen/bouncer if the user hit 'Stop notifications'.
+            // Otherwise, update the importance immediately.
+            if (mCheckSaveListener != null
+                    && NotificationCounters.BLOCKING_HELPER_STOP_NOTIFICATIONS.equals(
+                            mExitReason)) {
+                mCheckSaveListener.checkSave(this::updateImportance, mSbn);
+            } else {
+                updateImportance();
+            }
         }
     }
 
@@ -510,11 +511,6 @@ public class NotificationInfo extends LinearLayout implements NotificationGuts.G
     @Override
     public int getActualHeight() {
         return getHeight();
-    }
-
-    @VisibleForTesting
-    public boolean isAnimating() {
-        return mExpandAnimation != null && mExpandAnimation.isRunning();
     }
 
     /**

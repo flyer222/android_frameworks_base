@@ -264,8 +264,7 @@ framework_metalava_docs_LOCAL_DROIDDOC_OPTIONS := \
     --hide RequiresPermission \
     --hide MissingPermission --hide BroadcastBehavior \
     --hide HiddenSuperclass --hide DeprecationMismatch --hide UnavailableSymbol \
-    --hide SdkConstant --hide HiddenTypeParameter --hide Todo --hide Typo \
-    --include-annotation-classes tools/metalava/stub-annotations \
+    --hide SdkConstant --hide HiddenTypeParameter --hide Todo --hide Typo
 
 # ====  Public API diff ===========================
 include $(CLEAR_VARS)

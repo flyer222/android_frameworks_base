@@ -254,7 +254,7 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
     // 1 second, or 1 Hz frequency.
     private static final long LOCATION_UPDATE_MIN_TIME_INTERVAL_MILLIS = 1000;
     // Default update duration in milliseconds for REQUEST_LOCATION.
-    private static final long LOCATION_UPDATE_DURATION_MILLIS = 10 * 1000;
+    private static final long LOCATION_UPDATE_DURATION_MILLIS = 0;
 
     /** simpler wrapper for ProviderRequest + Worksource */
     private static class GpsRequest {
@@ -723,17 +723,6 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
                 Log.e(TAG, "unable to parse SUPL_ES: " + suplESProperty);
             }
         }
-
-        String emergencyExtensionSecondsString
-                = properties.getProperty("ES_EXTENSION_SEC", "0");
-        try {
-            int emergencyExtensionSeconds =
-                    Integer.parseInt(emergencyExtensionSecondsString);
-            mNIHandler.setEmergencyExtensionSeconds(emergencyExtensionSeconds);
-        } catch (NumberFormatException e) {
-            Log.e(TAG, "unable to parse ES_EXTENSION_SEC: "
-                    + emergencyExtensionSecondsString);
-        }
     }
 
     private void loadPropertiesFromResource(Context context,
@@ -810,11 +799,12 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
         // while IO initialization and registration is delegated to our internal handler
         // this approach is just fine because events are posted to our handler anyway
         mProperties = new Properties();
-        // Create a GPS net-initiated handler (also needed by handleInitialize)
+        sendMessage(INITIALIZE_HANDLER, 0, null);
+
+        // Create a GPS net-initiated handler.
         mNIHandler = new GpsNetInitiatedHandler(context,
                 mNetInitiatedListener,
                 mSuplEsEnabled);
-        sendMessage(INITIALIZE_HANDLER, 0, null);
 
         mListenerHelper = new GnssStatusListenerHelper(mHandler) {
             @Override
@@ -1047,9 +1037,6 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
     }
 
     private void injectBestLocation(Location location) {
-        if (location.isFromMockProvider()) {
-            return;
-        }
         int gnssLocationFlags = LOCATION_HAS_LAT_LONG |
                 (location.hasAltitude() ? LOCATION_HAS_ALTITUDE : 0) |
                 (location.hasSpeed() ? LOCATION_HAS_SPEED : 0) |
@@ -1144,9 +1131,6 @@ public class GnssLocationProvider implements LocationProviderInterface, InjectNt
     }
 
     private void handleUpdateLocation(Location location) {
-        if (location.isFromMockProvider()) {
-            return;
-        }
         if (location.hasAccuracy()) {
             native_inject_location(location.getLatitude(), location.getLongitude(),
                     location.getAccuracy());

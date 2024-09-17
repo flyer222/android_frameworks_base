@@ -95,8 +95,6 @@ import com.android.internal.os.SomeArgs;
 import com.android.internal.util.Preconditions;
 import com.android.internal.util.UserIcons;
 
-import com.nvidia.NvAppProfileService;
-
 import dalvik.system.VMRuntime;
 
 import libcore.util.EmptyArray;
@@ -125,7 +123,6 @@ public class ApplicationPackageManager extends PackageManager {
     private UserManager mUserManager;
     @GuardedBy("mLock")
     private PackageInstaller mInstaller;
-    private NvAppProfileService mAppProfileService;
     @GuardedBy("mLock")
     private ArtManager mArtManager;
 
@@ -372,15 +369,6 @@ public class ApplicationPackageManager extends PackageManager {
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
-    }
-
-    /** @hide */
-    @Override
-    public NvAppProfileService getAppProfileService() {
-        if (mAppProfileService == null) {
-            mAppProfileService = new NvAppProfileService(mContext);
-        }
-        return mAppProfileService;
     }
 
     @Override

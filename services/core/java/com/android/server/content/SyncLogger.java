@@ -16,7 +16,6 @@
 
 package com.android.server.content;
 
-import android.accounts.Account;
 import android.app.job.JobParameters;
 import android.os.Build;
 import android.os.Environment;
@@ -27,8 +26,6 @@ import android.util.Log;
 import android.util.Slog;
 
 import com.android.internal.annotations.GuardedBy;
-import com.android.server.content.SyncManager.ActiveSyncContext;
-import com.android.server.content.SyncStorageEngine.EndPoint;
 
 import libcore.io.IoUtils;
 
@@ -275,21 +272,5 @@ public class SyncLogger {
             } catch (IOException e) {
             }
         }
-    }
-
-    static String logSafe(Account account) {
-        return account == null ? "[null]" : "***/" + account.type;
-    }
-
-    static String logSafe(EndPoint endPoint) {
-        return endPoint == null ? "[null]" : endPoint.toSafeString();
-    }
-
-    static String logSafe(SyncOperation operation) {
-        return operation == null ? "[null]" : operation.toSafeString();
-    }
-
-    static String logSafe(ActiveSyncContext asc) {
-        return asc == null ? "[null]" : asc.toSafeString();
     }
 }

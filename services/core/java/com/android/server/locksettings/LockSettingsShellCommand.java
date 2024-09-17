@@ -135,9 +135,7 @@ class LockSettingsShellCommand extends ShellCommand {
     }
 
     private void runSetPattern() throws RemoteException {
-        byte patternSize = mLockPatternUtils.getLockPatternSize(mCurrentUserId);
-        mLockPatternUtils.saveLockPattern(
-                stringToPattern(mNew, patternSize), mOld, mCurrentUserId);
+        mLockPatternUtils.saveLockPattern(stringToPattern(mNew), mOld, mCurrentUserId);
         getOutPrintWriter().println("Pattern set to '" + mNew + "'");
     }
 
@@ -181,9 +179,7 @@ class LockSettingsShellCommand extends ShellCommand {
                 if (havePassword) {
                     result = mLockPatternUtils.checkPassword(mOld, mCurrentUserId);
                 } else {
-                    byte patternSize = mLockPatternUtils.getLockPatternSize(mCurrentUserId);
-                    result = mLockPatternUtils.checkPattern(
-                            stringToPattern(mOld, patternSize), mCurrentUserId);
+                    result = mLockPatternUtils.checkPattern(stringToPattern(mOld), mCurrentUserId);
                 }
                 if (!result) {
                     if (!mLockPatternUtils.isManagedProfileWithUnifiedChallenge(mCurrentUserId)) {

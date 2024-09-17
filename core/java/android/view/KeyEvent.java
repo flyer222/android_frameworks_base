@@ -808,6 +808,8 @@ public class KeyEvent extends InputEvent implements Parcelable {
     public static final int KEYCODE_ALL_APPS = 284;
     /** Key code constant: Refresh key. */
     public static final int KEYCODE_REFRESH = 285;
+    /** Key code constant: youtube. */
+    public static final int KEYCODE_YOUTUBE = 286;
 
     private static final int LAST_KEYCODE = KEYCODE_REFRESH;
 
@@ -883,8 +885,8 @@ public class KeyEvent extends InputEvent implements Parcelable {
     /**
      * {@link #getAction} value: multiple duplicate key events have
      * occurred in a row, or a complex string is being delivered.  If the
-     * key code is not {@link #KEYCODE_UNKNOWN} then the
-     * {@link #getRepeatCount()} method returns the number of times
+     * key code is not {#link {@link #KEYCODE_UNKNOWN} then the
+     * {#link {@link #getRepeatCount()} method returns the number of times
      * the given key code should be executed.
      * Otherwise, if the key code is {@link #KEYCODE_UNKNOWN}, then
      * this is a sequence of characters as returned by {@link #getCharacters}.
@@ -1861,6 +1863,8 @@ public class KeyEvent extends InputEvent implements Parcelable {
             case KeyEvent.KEYCODE_SYSTEM_NAVIGATION_DOWN:
             case KeyEvent.KEYCODE_SYSTEM_NAVIGATION_LEFT:
             case KeyEvent.KEYCODE_SYSTEM_NAVIGATION_RIGHT:
+            case KeyEvent.KEYCODE_YOUTUBE:
+            case KeyEvent.KEYCODE_SETTINGS:
                 return true;
         }
 
@@ -1877,11 +1881,8 @@ public class KeyEvent extends InputEvent implements Parcelable {
             case KeyEvent.KEYCODE_STEM_1:
             case KeyEvent.KEYCODE_STEM_2:
             case KeyEvent.KEYCODE_STEM_3:
-            case KeyEvent.KEYCODE_VOLUME_UP:
-            case KeyEvent.KEYCODE_VOLUME_DOWN:
-            case KeyEvent.KEYCODE_VOLUME_MUTE:
-            case KeyEvent.KEYCODE_CAMERA:
-            case KeyEvent.KEYCODE_FOCUS:
+            case KeyEvent.KEYCODE_YOUTUBE:
+            case KeyEvent.KEYCODE_SETTINGS:
                 return true;
         }
         return false;

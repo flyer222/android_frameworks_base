@@ -59,9 +59,10 @@ public class NetlinkSocket {
         final String errPrefix = "Error in NetlinkSocket.sendOneShotKernelMessage";
         final long IO_TIMEOUT = 300L;
 
-        final FileDescriptor fd = forProto(nlProto);
+        FileDescriptor fd;
 
         try {
+            fd = forProto(nlProto);
             connectToKernel(fd);
             sendMessage(fd, msg, 0, msg.length, IO_TIMEOUT);
             final ByteBuffer bytes = recvMessage(fd, DEFAULT_RECV_BUFSIZE, IO_TIMEOUT);
@@ -95,9 +96,9 @@ public class NetlinkSocket {
         } catch (SocketException e) {
             Log.e(TAG, errPrefix, e);
             throw new ErrnoException(errPrefix, EIO, e);
-        } finally {
-            IoUtils.closeQuietly(fd);
         }
+
+        IoUtils.closeQuietly(fd);
     }
 
     public static FileDescriptor forProto(int nlProto) throws ErrnoException {

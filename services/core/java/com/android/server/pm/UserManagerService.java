@@ -1358,7 +1358,6 @@ public class UserManagerService extends IUserManager.Stub {
                 mGuestRestrictions.putBoolean(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, true);
                 mGuestRestrictions.putBoolean(UserManager.DISALLOW_OUTGOING_CALLS, true);
                 mGuestRestrictions.putBoolean(UserManager.DISALLOW_SMS, true);
-                mGuestRestrictions.putBoolean(UserManager.DISALLOW_SU, true);
             }
         }
     }
@@ -2683,7 +2682,7 @@ public class UserManagerService extends IUserManager.Stub {
                     long now = System.currentTimeMillis();
                     userInfo.creationTime = (now > EPOCH_PLUS_30_YEARS) ? now : 0;
                     userInfo.partial = true;
-                    userInfo.lastLoggedInFingerprint = Build.DATE;
+                    userInfo.lastLoggedInFingerprint = Build.FINGERPRINT;
                     if (isManagedProfile && parentId != UserHandle.USER_NULL) {
                         userInfo.profileBadge = getFreeProfileBadgeLU(parentId);
                     }
@@ -3359,7 +3358,7 @@ public class UserManagerService extends IUserManager.Stub {
         }
         final int userSerial = userInfo.serialNumber;
         // Migrate only if build fingerprints mismatch
-        boolean migrateAppsData = !Build.DATE.equals(userInfo.lastLoggedInFingerprint);
+        boolean migrateAppsData = !Build.FINGERPRINT.equals(userInfo.lastLoggedInFingerprint);
         mUserDataPreparer.prepareUserData(userId, userSerial, StorageManager.FLAG_STORAGE_DE);
         mPm.reconcileAppsData(userId, StorageManager.FLAG_STORAGE_DE, migrateAppsData);
 
@@ -3381,7 +3380,7 @@ public class UserManagerService extends IUserManager.Stub {
         }
         final int userSerial = userInfo.serialNumber;
         // Migrate only if build fingerprints mismatch
-        boolean migrateAppsData = !Build.DATE.equals(userInfo.lastLoggedInFingerprint);
+        boolean migrateAppsData = !Build.FINGERPRINT.equals(userInfo.lastLoggedInFingerprint);
         mUserDataPreparer.prepareUserData(userId, userSerial, StorageManager.FLAG_STORAGE_CE);
         mPm.reconcileAppsData(userId, StorageManager.FLAG_STORAGE_CE, migrateAppsData);
     }
@@ -3411,7 +3410,7 @@ public class UserManagerService extends IUserManager.Stub {
         if (now > EPOCH_PLUS_30_YEARS) {
             userData.info.lastLoggedInTime = now;
         }
-        userData.info.lastLoggedInFingerprint = Build.DATE;
+        userData.info.lastLoggedInFingerprint = Build.FINGERPRINT;
         scheduleWriteUser(userData);
     }
 
@@ -3879,7 +3878,6 @@ public class UserManagerService extends IUserManager.Stub {
             if (user != null && !user.isAdmin() && !user.isDemo()) {
                 setUserRestriction(UserManager.DISALLOW_SMS, true, user.id);
                 setUserRestriction(UserManager.DISALLOW_OUTGOING_CALLS, true, user.id);
-                setUserRestriction(UserManager.DISALLOW_SU, true, user.id);
             }
             return user;
         }

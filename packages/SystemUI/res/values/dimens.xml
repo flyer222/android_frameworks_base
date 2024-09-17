@@ -252,9 +252,6 @@
          -->
     <dimen name="qs_header_system_icons_area_height">48dp</dimen>
 
-    <!-- How far the quick-quick settings panel extends below the status bar -->
-    <dimen name="qs_quick_header_panel_height">128dp</dimen>
-
     <!-- The height of the container that holds the system icons in the quick settings header in the
          car setting. -->
     <dimen name="car_qs_header_system_icons_area_height">54dp</dimen>
@@ -295,7 +292,7 @@
     <!-- The width of the panel that holds the quick settings. -->
     <dimen name="qs_panel_width">@dimen/notification_panel_width</dimen>
 
-    <dimen name="volume_dialog_panel_transparent_padding_horizontal">8dp</dimen>
+    <dimen name="volume_dialog_panel_transparent_padding_right">8dp</dimen>
 
     <dimen name="volume_dialog_panel_transparent_padding">20dp</dimen>
 
@@ -391,7 +388,7 @@
     <dimen name="qs_data_usage_usage_text_size">36sp</dimen>
     <dimen name="qs_battery_padding">2dp</dimen>
     <dimen name="qs_detail_padding_start">16dp</dimen>
-    <dimen name="qs_detail_items_padding_top">16dp</dimen>
+    <dimen name="qs_detail_items_padding_top">4dp</dimen>
     <dimen name="qs_detail_item_icon_size">24dp</dimen>
     <dimen name="qs_detail_item_icon_width">32dp</dimen>
     <dimen name="qs_detail_item_icon_marginStart">0dp</dimen>
@@ -767,6 +764,9 @@
     <dimen name="volume_expander_margin_end">2dp</dimen>
     <dimen name="volume_expander_margin_top">6dp</dimen>
 
+    <!-- Padding between icon and text for managed profile toast -->
+    <dimen name="managed_profile_toast_padding">4dp</dimen>
+
     <!-- Thickness of the assist disclosure beams -->
     <dimen name="assist_disclosure_thickness">2.5dp</dimen>
 
@@ -922,30 +922,22 @@
 
     <dimen name="global_actions_top_padding">120dp</dimen>
 
-    <dimen name="global_actions_padding">12dp</dimen>
-
-    <dimen name="global_actions_translate">9dp</dimen>
-
-    <!-- The maximum offset in either direction that elements are moved horizontally to prevent
-         burn-in on AOD. -->
+    <!-- the maximum offset in either direction that elements are moved horizontally to prevent
+            burn-in on AOD -->
     <dimen name="burn_in_prevention_offset_x">8dp</dimen>
 
-    <!-- The maximum offset in either direction that elements are moved vertically to prevent
-         burn-in on AOD. -->
+    <!-- the maximum offset in either direction that elements are moved vertically to prevent
+            burn-in on AOD -->
     <dimen name="burn_in_prevention_offset_y">50dp</dimen>
-
-    <!-- The maximum offset in either direction that the charging indication moves vertically
-         to prevent burn-in on AOD. -->
-    <dimen name="charging_indication_burn_in_prevention_offset_y">5dp</dimen>
 
     <dimen name="corner_size">8dp</dimen>
     <dimen name="top_padding">0dp</dimen>
     <dimen name="bottom_padding">48dp</dimen>
     <dimen name="edge_margin">8dp</dimen>
 
-    <dimen name="rounded_corner_radius">@*android:dimen/rounded_corner_radius</dimen>
-    <dimen name="rounded_corner_radius_top">@*android:dimen/rounded_corner_radius_top</dimen>
-    <dimen name="rounded_corner_radius_bottom">@*android:dimen/rounded_corner_radius_bottom</dimen>
+    <dimen name="rounded_corner_radius">0dp</dimen>
+    <dimen name="rounded_corner_radius_top">0dp</dimen>
+    <dimen name="rounded_corner_radius_bottom">0dp</dimen>
     <dimen name="rounded_corner_content_padding">0dp</dimen>
     <dimen name="nav_content_padding">0dp</dimen>
     <dimen name="nav_quick_scrub_track_edge_padding">24dp</dimen>
@@ -1019,15 +1011,5 @@
 
     <!-- How much into a DisplayCutout's bounds we can go, on each side -->
     <dimen name="display_cutout_margin_consumption">0px</dimen>
-
-    <!-- How much we expand the touchable region of the status bar below the notch to catch touches
-         that just start below the notch. -->
-    <dimen name="display_cutout_touchable_region_size">12dp</dimen>
-
-    <!-- Padding for overheat alarm dialog message of content -->
-    <dimen name="alarm_dialog_panel_padding">24dp</dimen>
-
-    <!-- Padding for overheat alarm dialog message of content -->
-    <dimen name="alarm_dialog_message_space">28dp</dimen>
 
 </resources>

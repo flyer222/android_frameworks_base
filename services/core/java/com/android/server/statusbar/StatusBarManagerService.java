@@ -385,13 +385,13 @@ public class StatusBarManagerService extends IStatusBarService.Stub {
         }
 
         @Override
-        public boolean showShutdownUi(boolean isReboot, String reason, boolean rebootCustom) {
+        public boolean showShutdownUi(boolean isReboot, String reason) {
             if (!mContext.getResources().getBoolean(R.bool.config_showSysuiShutdown)) {
                 return false;
             }
             if (mBar != null) {
                 try {
-                    mBar.showShutdownUi(isReboot, reason, rebootCustom);
+                    mBar.showShutdownUi(isReboot, reason);
                     return true;
                 } catch (RemoteException ex) {}
             }
@@ -592,28 +592,6 @@ public class StatusBarManagerService extends IStatusBarService.Stub {
             try {
                 mBar.hideFingerprintDialog();
             } catch (RemoteException ex) {
-            }
-        }
-    }
-
-    @Override
-    public void showInDisplayFingerprintView() {
-        if (mBar != null) {
-            try {
-                mBar.showInDisplayFingerprintView();
-            } catch (RemoteException ex) {
-                // do nothing
-            }
-        }
-    }
-
-    @Override
-    public void hideInDisplayFingerprintView() {
-        if (mBar != null) {
-            try {
-                mBar.hideInDisplayFingerprintView();
-            } catch (RemoteException ex) {
-                // do nothing
             }
         }
     }
@@ -979,7 +957,7 @@ public class StatusBarManagerService extends IStatusBarService.Stub {
      * Allows the status bar to reboot the device.
      */
     @Override
-    public void reboot(boolean safeMode, String reason) {
+    public void reboot(boolean safeMode) {
         enforceStatusBarService();
         long identity = Binder.clearCallingIdentity();
         try {
@@ -988,7 +966,8 @@ public class StatusBarManagerService extends IStatusBarService.Stub {
                 if (safeMode) {
                     ShutdownThread.rebootSafeMode(getUiContext(), true);
                 } else {
-                    ShutdownThread.rebootCustom(getUiContext(), reason, false);
+                    ShutdownThread.reboot(getUiContext(),
+                            PowerManager.SHUTDOWN_USER_REQUESTED, false);
                 }
             });
         } finally {

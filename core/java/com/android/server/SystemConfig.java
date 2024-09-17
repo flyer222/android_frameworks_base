@@ -25,7 +25,6 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Environment;
 import android.os.Process;
-import android.os.SystemProperties;
 import android.os.storage.StorageManager;
 import android.text.TextUtils;
 import android.util.ArrayMap;
@@ -67,9 +66,6 @@ public class SystemConfig {
     private static final int ALLOW_OEM_PERMISSIONS = 0x20;
     private static final int ALLOW_HIDDENAPI_WHITELISTING = 0x40;
     private static final int ALLOW_ALL = ~0;
-
-    // property for runtime configuration differentiation
-    private static final String SKU_PROPERTY = "ro.boot.product.hardware.sku";
 
     // Group-ids that are given to all packages as read from etc/permissions/*.xml.
     int[] mGlobalGids;
@@ -316,17 +312,6 @@ public class SystemConfig {
         readPermissions(Environment.buildPath(
                 Environment.getOdmDirectory(), "etc", "permissions"), odmPermissionFlag);
 
-        String skuProperty = SystemProperties.get(SKU_PROPERTY, "");
-        if (!skuProperty.isEmpty()) {
-            String skuDir = "sku_" + skuProperty;
-
-            readPermissions(Environment.buildPath(
-                    Environment.getOdmDirectory(), "etc", "sysconfig", skuDir), odmPermissionFlag);
-            readPermissions(Environment.buildPath(
-                    Environment.getOdmDirectory(), "etc", "permissions", skuDir),
-                    odmPermissionFlag);
-        }
-
         // Allow OEM to customize features and OEM permissions
         int oemPermissionFlag = ALLOW_FEATURES | ALLOW_OEM_PERMISSIONS;
         readPermissions(Environment.buildPath(
@@ -334,11 +319,13 @@ public class SystemConfig {
         readPermissions(Environment.buildPath(
                 Environment.getOemDirectory(), "etc", "permissions"), oemPermissionFlag);
 
-        // Allow Product to customize all system configs
+        // Allow Product to customize system configs around libs, features, permissions and apps
+        int productPermissionFlag = ALLOW_LIBS | ALLOW_FEATURES | ALLOW_PERMISSIONS |
+                ALLOW_APP_CONFIGS | ALLOW_PRIVAPP_PERMISSIONS;
         readPermissions(Environment.buildPath(
-                Environment.getProductDirectory(), "etc", "sysconfig"), ALLOW_ALL);
+                Environment.getProductDirectory(), "etc", "sysconfig"), productPermissionFlag);
         readPermissions(Environment.buildPath(
-                Environment.getProductDirectory(), "etc", "permissions"), ALLOW_ALL);
+                Environment.getProductDirectory(), "etc", "permissions"), productPermissionFlag);
     }
 
     void readPermissions(File libraryDir, int permissionFlag) {
@@ -357,10 +344,6 @@ public class SystemConfig {
         // Iterate over the files in the directory and scan .xml files
         File platformFile = null;
         for (File f : libraryDir.listFiles()) {
-            if (!f.isFile()) {
-                continue;
-            }
-
             // We'll read platform.xml last
             if (f.getPath().endsWith("etc/permissions/platform.xml")) {
                 platformFile = f;

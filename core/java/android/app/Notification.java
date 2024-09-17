@@ -195,7 +195,7 @@ public class Notification implements Parcelable
      * <p>
      * Avoids spamming the system with overly large strings such as full e-mails.
      */
-    private static final int MAX_CHARSEQUENCE_LENGTH = 1024;
+    private static final int MAX_CHARSEQUENCE_LENGTH = 5 * 1024;
 
     /**
      * Maximum entries of reply text that are accepted by Builder and friends.
@@ -2767,6 +2767,7 @@ public class Notification implements Parcelable
      */
     private void fixDuplicateExtras() {
         if (extras != null) {
+            fixDuplicateExtra(mSmallIcon, EXTRA_SMALL_ICON);
             fixDuplicateExtra(mLargeIcon, EXTRA_LARGE_ICON);
         }
     }
@@ -2825,19 +2826,6 @@ public class Notification implements Parcelable
         builder.setContentIntent(contentIntent);
 
         builder.build(); // callers expect this notification to be ready to use
-    }
-
-    /**
-     * Sets the token used for background operations for the pending intents associated with this
-     * notification.
-     *
-     * This token is automatically set during deserialization for you, you usually won't need to
-     * call this unless you want to change the existing token, if any.
-     *
-     * @hide
-     */
-    public void setAllowlistToken(@Nullable IBinder token) {
-        mWhitelistToken = token;
     }
 
     /**
@@ -3495,7 +3483,7 @@ public class Notification implements Parcelable
 
         /**
          * Set the small icon, which will be used to represent the notification in the
-         * status bar and content view (unless overridden there by a
+         * status bar and content view (unless overriden there by a
          * {@link #setLargeIcon(Bitmap) large icon}).
          *
          * @param icon An Icon object to use.
@@ -6196,7 +6184,7 @@ public class Notification implements Parcelable
         public abstract boolean areNotificationsVisiblyDifferent(Style other);
 
         /**
-         * @return the text that should be displayed in the statusBar when heads-upped.
+         * @return the the text that should be displayed in the statusBar when heads-upped.
          * If {@code null} is returned, the default implementation will be used.
          *
          * @hide
@@ -6683,7 +6671,7 @@ public class Notification implements Parcelable
         }
 
         /**
-         * @return the text that should be displayed in the statusBar when heads upped.
+         * @return the the text that should be displayed in the statusBar when heads upped.
          * If {@code null} is returned, the default implementation will be used.
          *
          * @hide
@@ -7253,7 +7241,7 @@ public class Notification implements Parcelable
              */
             public Message(@NonNull CharSequence text, long timestamp, @Nullable Person sender,
                     boolean remoteInputHistory) {
-                mText = safeCharSequence(text);
+                mText = text;
                 mTimestamp = timestamp;
                 mSender = sender;
                 mRemoteInputHistory = remoteInputHistory;
@@ -7339,7 +7327,7 @@ public class Notification implements Parcelable
             }
 
             /**
-             * Get the Uri pointing to the content of the message. Can be null, in which case
+             * Get the the Uri pointing to the content of the message. Can be null, in which case
              * {@see #getText()} is used.
              */
             public Uri getDataUri() {
@@ -7363,7 +7351,7 @@ public class Notification implements Parcelable
                 bundle.putLong(KEY_TIMESTAMP, mTimestamp);
                 if (mSender != null) {
                     // Legacy listeners need this
-                    bundle.putCharSequence(KEY_SENDER, safeCharSequence(mSender.getName()));
+                    bundle.putCharSequence(KEY_SENDER, mSender.getName());
                     bundle.putParcelable(KEY_SENDER_PERSON, mSender);
                 }
                 if (mDataMimeType != null) {

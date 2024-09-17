@@ -34,7 +34,6 @@ import android.util.Slog;
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.util.IndentingPrintWriter;
 import com.android.server.pm.Installer.InstallerException;
-import com.android.server.pm.dex.ArtManagerService;
 import com.android.server.pm.dex.DexManager;
 import com.android.server.pm.dex.DexoptOptions;
 import com.android.server.pm.dex.DexoptUtils;
@@ -290,8 +289,7 @@ public class PackageDexOptimizer {
             mInstaller.dexopt(path, uid, pkg.packageName, isa, dexoptNeeded, oatDir, dexoptFlags,
                     compilerFilter, pkg.volumeUuid, classLoaderContext, pkg.applicationInfo.seInfo,
                     false /* downgrade*/, pkg.applicationInfo.targetSdkVersion,
-                    profileName, dexMetadataPath,
-                    getAugmentedReasonName(compilationReason, dexMetadataPath != null));
+                    profileName, dexMetadataPath, getReasonName(compilationReason));
 
             if (packageStats != null) {
                 long endTime = System.currentTimeMillis();
@@ -302,12 +300,6 @@ public class PackageDexOptimizer {
             Slog.w(TAG, "Failed to dexopt", e);
             return DEX_OPT_FAILED;
         }
-    }
-
-    private String getAugmentedReasonName(int compilationReason, boolean useDexMetadata) {
-        String annotation = useDexMetadata
-                ? ArtManagerService.DEXOPT_REASON_WITH_DEX_METADATA_ANNOTATION : "";
-        return getReasonName(compilationReason) + annotation;
     }
 
     /**

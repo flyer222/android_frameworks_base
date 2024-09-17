@@ -478,8 +478,6 @@ import libcore.util.EmptyArray;
 import com.google.android.collect.Lists;
 import com.google.android.collect.Maps;
 
-import org.lineageos.internal.applications.LineageActivityManager;
-
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 import org.xmlpull.v1.XmlSerializer;
@@ -583,12 +581,6 @@ public class ActivityManagerService extends IActivityManager.Stub
     // before we decide it must be hung.
     static final int CONTENT_PROVIDER_PUBLISH_TIMEOUT = 10*1000;
 
-    /**
-     * How long we wait for an provider to be published. Should be longer than
-     * {@link #CONTENT_PROVIDER_PUBLISH_TIMEOUT}.
-     */
-    static final int CONTENT_PROVIDER_WAIT_TIMEOUT = 20 * 1000;
-
     // How long we wait for a launched process to attach to the activity manager
     // before we decide it's never going to come up for real, when the process was
     // started with a wrapper for instrumentation (such as Valgrind) because it
@@ -628,7 +620,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     // How many bytes to write into the dropbox log before truncating
-    static final int DROPBOX_MAX_SIZE = 192 * 1024;
+    static final int DROPBOX_MAX_SIZE = 1 * 1024 * 1024;
     // Assumes logcat entries average around 100 bytes; that's not perfect stack traces count
     // as one line, but close enough for now.
     static final int RESERVED_BYTES_PER_LOGCAT_LINE = 100;
@@ -1944,9 +1936,6 @@ public class ActivityManagerService extends IActivityManager.Stub
     static final int SERVICE_FOREGROUND_CRASH_MSG = 69;
     static final int DISPATCH_OOM_ADJ_OBSERVER_MSG = 70;
 
-    static final int POST_PRIVACY_NOTIFICATION_MSG = 90;
-    static final int CANCEL_PRIVACY_NOTIFICATION_MSG = 91;
-
     static final int FIRST_ACTIVITY_STACK_MSG = 100;
     static final int FIRST_BROADCAST_QUEUE_MSG = 200;
     static final int FIRST_COMPAT_MODE_MSG = 300;
@@ -1959,16 +1948,6 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     CompatModeDialog mCompatModeDialog;
     long mLastMemUsageReportTime = 0;
-
-    // Min aging threshold in milliseconds to consider a B-service
-    int mMinBServiceAgingTime =
-            SystemProperties.getInt("ro.vendor.qti.sys.fw.bservice_age", 5000);
-    // Threshold for B-services when in memory pressure
-    int mBServiceAppThreshold =
-            SystemProperties.getInt("ro.vendor.qti.sys.fw.bservice_limit", 5);
-    // Enable B-service aging propagation on memory pressure.
-    boolean mEnableBServicePropagation =
-            SystemProperties.getBoolean("ro.vendor.qti.sys.fw.bservice_enable", false);
 
     /**
      * Flag whether the current user is a "monkey", i.e. whether
@@ -2008,9 +1987,6 @@ public class ActivityManagerService extends IActivityManager.Stub
     boolean mForceBackgroundCheck;
 
     private static String sTheRealBuildSerial = Build.UNKNOWN;
-
-    // Lineage sdk activity related helper
-    private LineageActivityManager mLineageActivityManager;
 
     /**
      * Current global configuration information. Contains general settings for the entire system,
@@ -2231,9 +2207,6 @@ public class ActivityManagerService extends IActivityManager.Stub
                     }
                 }
                 callbacks.finishBroadcast();
-                // We have to clean up the RemoteCallbackList here, because otherwise it will
-                // needlessly hold the enclosed callbacks until the remote process dies.
-                callbacks.kill();
             } break;
             case UPDATE_TIME_ZONE: {
                 synchronized (ActivityManagerService.this) {
@@ -2583,67 +2556,6 @@ public class ActivityManagerService extends IActivityManager.Stub
                 // Only a UiAutomation can set this flag and now that
                 // it is finished we make sure it is reset to its default.
                 mUserIsMonkey = false;
-            } break;
-            case POST_PRIVACY_NOTIFICATION_MSG: {
-                INotificationManager inm = NotificationManager.getService();
-                if (inm == null) {
-                    return;
-                }
-
-                ActivityRecord root = (ActivityRecord) msg.obj;
-                ProcessRecord process = root.app;
-                if (process == null) {
-                    return;
-                }
-
-                try {
-                    Context context = mContext.createPackageContext(process.info.packageName, 0);
-                    String text = mContext.getString(R.string.privacy_guard_notification_detail,
-                            context.getApplicationInfo().loadLabel(context.getPackageManager()));
-                    String title = mContext.getString(R.string.privacy_guard_notification);
-
-                    Intent infoIntent = new Intent(Settings.ACTION_APP_OPS_DETAILS_SETTINGS,
-                            Uri.fromParts("package", root.packageName, null));
-
-                    Notification.Builder builder = new Notification.Builder(mContext,
-                            SystemNotificationChannels.SECURITY);
-                    builder.setSmallIcon(com.android.internal.R.drawable.stat_notify_privacy_guard)
-                            .setOngoing(true)
-                            .setPriority(Notification.PRIORITY_LOW)
-                            .setContentTitle(title)
-                            .setContentText(text)
-                            .setContentIntent(PendingIntent.getActivityAsUser(mContext, 0,
-                                    infoIntent, PendingIntent.FLAG_CANCEL_CURRENT, null,
-                                    new UserHandle(root.userId)));
-                    Notification notification = builder.build();
-
-                    try {
-                        int[] outId = new int[1];
-                        inm.enqueueNotificationWithTag("android", "android", null,
-                                R.string.privacy_guard_notification,
-                                notification, root.userId);
-                    } catch (RuntimeException e) {
-                        Slog.w(ActivityManagerService.TAG,
-                                "Error showing notification for privacy guard", e);
-                    } catch (RemoteException e) {
-                    }
-                } catch (NameNotFoundException e) {
-                    Slog.w(TAG, "Unable to create context for privacy guard notification", e);
-                }
-            } break;
-            case CANCEL_PRIVACY_NOTIFICATION_MSG: {
-                INotificationManager inm = NotificationManager.getService();
-                if (inm == null) {
-                    return;
-                }
-                try {
-                    inm.cancelNotificationWithTag("android", null,
-                            R.string.privacy_guard_notification,  msg.arg1);
-                } catch (RuntimeException e) {
-                    Slog.w(ActivityManagerService.TAG,
-                            "Error canceling notification for service", e);
-                } catch (RemoteException e) {
-                }
             } break;
             case IDLE_UIDS_MSG: {
                 idleUids();
@@ -3102,7 +3014,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         mActivityStartController = null;
         mAppErrors = null;
         mAppWarnings = null;
-        mAppOpsService = mInjector.getAppOpsService(null, null, this);
+        mAppOpsService = mInjector.getAppOpsService(null, null);
         mBatteryStatsService = null;
         mCompatModePackages = null;
         mConstants = null;
@@ -3194,8 +3106,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
         mProcessStats = new ProcessStatsService(this, new File(systemDir, "procstats"));
 
-        mAppOpsService = mInjector.getAppOpsService(new File(systemDir, "appops.xml"), mHandler,
-                this);
+        mAppOpsService = mInjector.getAppOpsService(new File(systemDir, "appops.xml"), mHandler);
 
         mGrantFile = new AtomicFile(new File(systemDir, "urigrants.xml"), "uri-grants");
 
@@ -4075,8 +3986,7 @@ public class ActivityManagerService extends IActivityManager.Stub
             final int procCount = procs.size();
             for (int i = 0; i < procCount; i++) {
                 final int procUid = procs.keyAt(i);
-                if (UserHandle.isApp(procUid) || !UserHandle.isSameUser(procUid, uid)
-                        || UserHandle.isIsolated(procUid)) {
+                if (UserHandle.isApp(procUid) || !UserHandle.isSameUser(procUid, uid)) {
                     // Don't use an app process or different user process for system component.
                     continue;
                 }
@@ -4305,7 +4215,6 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
             checkTime(startTime, "startProcess: done removing from pids map");
             app.setPid(0);
-            app.startSeq = 0;
         }
 
         if (DEBUG_PROCESSES && mProcessesOnHold.contains(app)) Slog.v(TAG_PROCESSES,
@@ -4496,14 +4405,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         app.killedByAm = false;
         app.removed = false;
         app.killed = false;
-        if (app.startSeq != 0) {
-            Slog.wtf(TAG, "startProcessLocked processName:" + app.processName
-                    + " with non-zero startSeq:" + app.startSeq);
-        }
-        if (app.pid != 0) {
-            Slog.wtf(TAG, "startProcessLocked processName:" + app.processName
-                    + " with non-zero pid:" + app.pid);
-        }
         final long startSeq = app.startSeq = ++mProcStartSeqCounter;
         app.setStartParams(uid, hostingType, hostingNameStr, seInfo, startTime);
         if (mConstants.FLAG_PROCESS_START_ASYNC) {
@@ -4689,11 +4590,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         // If there is already an app occupying that pid that hasn't been cleaned up
         if (oldApp != null && !app.isolated) {
             // Clean up anything relating to this pid first
-          Slog.wtf(TAG, "handleProcessStartedLocked process:" + app.processName
-                  + " startSeq:" + app.startSeq
-                  + " pid:" + pid
-                  + " belongs to another existing app:" + oldApp.processName
-                  + " startSeq:" + oldApp.startSeq);
+            Slog.w(TAG, "Reusing pid " + pid
+                    + " while app is still mapped to it");
             cleanUpApplicationRecordLocked(oldApp, false, false, -1,
                     true /*replacingPid*/);
         }
@@ -4907,18 +4805,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         return procState;
     }
 
-    private boolean isCallerShell() {
-        final int callingUid = Binder.getCallingUid();
-        return callingUid == SHELL_UID || callingUid == ROOT_UID;
-    }
-
     @Override
     public boolean setProcessMemoryTrimLevel(String process, int userId, int level)
             throws RemoteException {
-        if (!isCallerShell()) {
-            EventLog.writeEvent(0x534e4554, 160390416, Binder.getCallingUid(), "");
-            throw new SecurityException("Only shell can call it");
-        }
         synchronized (this) {
             final ProcessRecord app = findProcessLocked(process, userId, "setProcessMemoryTrimLevel");
             if (app == null) {
@@ -5697,10 +5586,9 @@ public class ActivityManagerService extends IActivityManager.Stub
         userId = mUserController.handleIncomingUser(Binder.getCallingPid(), Binder.getCallingUid(),
                 userId, false, ALLOW_FULL_ONLY, reason, null);
         // TODO: Switch to user app stacks here.
-        int ret = mActivityStartController.startActivities(caller, -1, 0,
-                UserHandle.USER_NULL, callingPackage, intents, resolvedTypes, resultTo,
-                SafeActivityOptions.fromBundle(bOptions), userId, reason,
-                null /* originatingPendingIntent */);
+        int ret = mActivityStartController.startActivities(caller, -1, callingPackage,
+                intents, resolvedTypes, resultTo, SafeActivityOptions.fromBundle(bOptions), userId,
+                reason);
         return ret;
     }
 
@@ -5862,7 +5750,7 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     @Override
     public void crashApplication(int uid, int initialPid, String packageName, int userId,
-            String message, boolean force) {
+            String message) {
         if (checkCallingPermission(android.Manifest.permission.FORCE_STOP_PACKAGES)
                 != PackageManager.PERMISSION_GRANTED) {
             String msg = "Permission Denial: crashApplication() from pid="
@@ -5874,8 +5762,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
 
         synchronized(this) {
-            mAppErrors.scheduleAppCrashLocked(uid, initialPid, packageName, userId,
-                    message, force);
+            mAppErrors.scheduleAppCrashLocked(uid, initialPid, packageName, userId, message);
         }
     }
 
@@ -6039,7 +5926,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         } finally {
             mWindowManager.continueSurfaceLayout();
         }
-
     }
 
     private final int getLRURecordIndexForAppLocked(IApplicationThread thread) {
@@ -7683,7 +7569,7 @@ public class ActivityManagerService extends IActivityManager.Stub
     }
 
     @GuardedBy("this")
-    private boolean attachApplicationLocked(@NonNull IApplicationThread thread,
+    private final boolean attachApplicationLocked(IApplicationThread thread,
             int pid, int callingUid, long startSeq) {
 
         // Find the application record that is being attached...  either via
@@ -7695,26 +7581,6 @@ public class ActivityManagerService extends IActivityManager.Stub
             synchronized (mPidsSelfLocked) {
                 app = mPidsSelfLocked.get(pid);
             }
-            if (app != null && (app.startUid != callingUid || app.startSeq != startSeq)) {
-                String processName = null;
-                final ProcessRecord pending = mPendingStarts.get(startSeq);
-                if (pending != null) {
-                    processName = pending.processName;
-                }
-                final String msg = "attachApplicationLocked process:" + processName
-                      + " startSeq:" + startSeq
-                      + " pid:" + pid
-                      + " belongs to another existing app:" + app.processName
-                      + " startSeq:" + app.startSeq;
-                Slog.wtf(TAG, msg);
-                // SafetyNet logging for b/131105245.
-                EventLog.writeEvent(0x534e4554, "131105245", app.startUid, msg);
-                // If there is already an app occupying that pid that hasn't been cleaned up
-                cleanUpApplicationRecordLocked(app, false, false, -1,
-                    true /*replacingPid*/);
-                mPidsSelfLocked.remove(pid);
-                app = null;
-            }
         } else {
             app = null;
         }
@@ -7723,7 +7589,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         // update the internal state.
         if (app == null && startSeq > 0) {
             final ProcessRecord pending = mPendingStarts.get(startSeq);
-            if (pending != null && pending.startUid == callingUid && pending.startSeq == startSeq
+            if (pending != null && pending.startUid == callingUid
                     && handleProcessStartedLocked(pending, pid, pending.usingWrapper,
                             startSeq, true)) {
                 app = pending;
@@ -8064,9 +7930,6 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     @Override
     public final void attachApplication(IApplicationThread thread, long startSeq) {
-        if (thread == null) {
-            throw new SecurityException("Invalid application interface");
-        }
         synchronized (this) {
             int callingPid = Binder.getCallingPid();
             final int callingUid = Binder.getCallingUid();
@@ -8895,14 +8758,6 @@ public class ActivityManagerService extends IActivityManager.Stub
 
     @Override
     public boolean isAppForeground(int uid) {
-        int callerUid = Binder.getCallingUid();
-        if (UserHandle.isCore(callerUid) || callerUid == uid) {
-            return isAppForegroundInternal(uid);
-        }
-        return false;
-    }
-
-    private boolean isAppForegroundInternal(int uid) {
         synchronized (this) {
             UidRecord uidRec = mActiveUids.get(uid);
             if (uidRec == null || uidRec.idle) {
@@ -11207,20 +11062,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
     }
 
-    /**
-     * @return whitelist tag for a uid from mPendingTempWhitelist, null if not currently on
-     * the whitelist
-     */
-    String getPendingTempWhitelistTagForUidLocked(int uid) {
-        final PendingTempWhitelist ptw = mPendingTempWhitelist.get(uid);
-        return ptw != null ? ptw.tag : null;
-    }
-
-    @VisibleForTesting
-    boolean isActivityStartsLoggingEnabled() {
-        return mConstants.mFlagActivityStartsLoggingEnabled;
-    }
-
     @Override
     public void moveStackToDisplay(int stackId, int displayId) {
         enforceCallingPermission(INTERNAL_SYSTEM_WINDOW, "moveStackToDisplay()");
@@ -12302,7 +12143,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         ContentProviderRecord cpr;
         ContentProviderConnection conn = null;
         ProviderInfo cpi = null;
-        boolean providerRunning = false;
 
         synchronized(this) {
             long startTime = SystemClock.uptimeMillis();
@@ -12342,26 +12182,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
             }
 
-            if (cpr != null && cpr.proc != null) {
-                providerRunning = !cpr.proc.killed;
-
-                // Note if killedByAm is also set, this means the provider process has just been
-                // killed by AM (in ProcessRecord.kill()), but appDiedLocked() hasn't been called
-                // yet. So we need to call appDiedLocked() here and let it clean up.
-                // (See the commit message on I2c4ba1e87c2d47f2013befff10c49b3dc337a9a7 to see
-                // how to test this case.)
-                if (cpr.proc.killed && cpr.proc.killedByAm) {
-                    checkTime(startTime, "getContentProviderImpl: before appDied (killedByAm)");
-                    final long iden = Binder.clearCallingIdentity();
-                    try {
-                        appDiedLocked(cpr.proc);
-                    } finally {
-                        Binder.restoreCallingIdentity(iden);
-                    }
-                    checkTime(startTime, "getContentProviderImpl: after appDied (killedByAm)");
-                }
-            }
-
+            boolean providerRunning = cpr != null && cpr.proc != null && !cpr.proc.killed;
             if (providerRunning) {
                 cpi = cpr.info;
                 String msg;
@@ -12393,66 +12214,65 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
 
                 final long origId = Binder.clearCallingIdentity();
-                try {
-                    checkTime(startTime, "getContentProviderImpl: incProviderCountLocked");
 
-                    // Return the provider instance right away since it already exists.
-                    conn = incProviderCountLocked(r, cpr, token, stable);
-                    if (conn != null && (conn.stableCount+conn.unstableCount) == 1) {
-                        if (cpr.proc != null && r.setAdj <= ProcessList.PERCEPTIBLE_APP_ADJ) {
-                            // If this is a perceptible app accessing the provider,
-                            // make sure to count it as being accessed and thus
-                            // back up on the LRU list.  This is good because
-                            // content providers are often expensive to start.
-                            checkTime(startTime, "getContentProviderImpl: before updateLruProcess");
-                            updateLruProcessLocked(cpr.proc, false, null);
-                            checkTime(startTime, "getContentProviderImpl: after updateLruProcess");
-                        }
-                    }
+                checkTime(startTime, "getContentProviderImpl: incProviderCountLocked");
 
-                    checkTime(startTime, "getContentProviderImpl: before updateOomAdj");
-                    final int verifiedAdj = cpr.proc.verifiedAdj;
-                    boolean success = updateOomAdjLocked(cpr.proc, true);
-                    // XXX things have changed so updateOomAdjLocked doesn't actually tell us
-                    // if the process has been successfully adjusted.  So to reduce races with
-                    // it, we will check whether the process still exists.  Note that this doesn't
-                    // completely get rid of races with LMK killing the process, but should make
-                    // them much smaller.
-                    if (success && verifiedAdj != cpr.proc.setAdj
-                            && !isProcessAliveLocked(cpr.proc)) {
-                        success = false;
+                // In this case the provider instance already exists, so we can
+                // return it right away.
+                conn = incProviderCountLocked(r, cpr, token, stable);
+                if (conn != null && (conn.stableCount+conn.unstableCount) == 1) {
+                    if (cpr.proc != null && r.setAdj <= ProcessList.PERCEPTIBLE_APP_ADJ) {
+                        // If this is a perceptible app accessing the provider,
+                        // make sure to count it as being accessed and thus
+                        // back up on the LRU list.  This is good because
+                        // content providers are often expensive to start.
+                        checkTime(startTime, "getContentProviderImpl: before updateLruProcess");
+                        updateLruProcessLocked(cpr.proc, false, null);
+                        checkTime(startTime, "getContentProviderImpl: after updateLruProcess");
                     }
-                    maybeUpdateProviderUsageStatsLocked(r, cpr.info.packageName, name);
-                    checkTime(startTime, "getContentProviderImpl: after updateOomAdj");
-                    if (DEBUG_PROVIDER) Slog.i(TAG_PROVIDER, "Adjust success: " + success);
-                    // NOTE: there is still a race here where a signal could be
-                    // pending on the process even though we managed to update its
-                    // adj level.  Not sure what to do about this, but at least
-                    // the race is now smaller.
-                    if (!success) {
-                        // Uh oh...  it looks like the provider's process
-                        // has been killed on us.  We need to wait for a new
-                        // process to be started, and make sure its death
-                        // doesn't kill our process.
-                        Slog.i(TAG, "Existing provider " + cpr.name.flattenToShortString()
-                                + " is crashing; detaching " + r);
-                        boolean lastRef = decProviderCountLocked(conn, cpr, token, stable);
-                        checkTime(startTime, "getContentProviderImpl: before appDied");
-                        appDiedLocked(cpr.proc);
-                        checkTime(startTime, "getContentProviderImpl: after appDied");
-                        if (!lastRef) {
-                            // This wasn't the last ref our process had on
-                            // the provider...  we have now been killed, bail.
-                            return null;
-                        }
-                        providerRunning = false;
-                        conn = null;
-                    } else {
-                        cpr.proc.verifiedAdj = cpr.proc.setAdj;
-                    }
-                } finally {
-                    Binder.restoreCallingIdentity(origId);
                 }
+
+                checkTime(startTime, "getContentProviderImpl: before updateOomAdj");
+                final int verifiedAdj = cpr.proc.verifiedAdj;
+                boolean success = updateOomAdjLocked(cpr.proc, true);
+                // XXX things have changed so updateOomAdjLocked doesn't actually tell us
+                // if the process has been successfully adjusted.  So to reduce races with
+                // it, we will check whether the process still exists.  Note that this doesn't
+                // completely get rid of races with LMK killing the process, but should make
+                // them much smaller.
+                if (success && verifiedAdj != cpr.proc.setAdj && !isProcessAliveLocked(cpr.proc)) {
+                    success = false;
+                }
+                maybeUpdateProviderUsageStatsLocked(r, cpr.info.packageName, name);
+                checkTime(startTime, "getContentProviderImpl: after updateOomAdj");
+                if (DEBUG_PROVIDER) Slog.i(TAG_PROVIDER, "Adjust success: " + success);
+                // NOTE: there is still a race here where a signal could be
+                // pending on the process even though we managed to update its
+                // adj level.  Not sure what to do about this, but at least
+                // the race is now smaller.
+                if (!success) {
+                    // Uh oh...  it looks like the provider's process
+                    // has been killed on us.  We need to wait for a new
+                    // process to be started, and make sure its death
+                    // doesn't kill our process.
+                    Slog.i(TAG, "Existing provider " + cpr.name.flattenToShortString()
+                            + " is crashing; detaching " + r);
+                    boolean lastRef = decProviderCountLocked(conn, cpr, token, stable);
+                    checkTime(startTime, "getContentProviderImpl: before appDied");
+                    appDiedLocked(cpr.proc);
+                    checkTime(startTime, "getContentProviderImpl: after appDied");
+                    if (!lastRef) {
+                        // This wasn't the last ref our process had on
+                        // the provider...  we have now been killed, bail.
+                        return null;
+                    }
+                    providerRunning = false;
+                    conn = null;
+                } else {
+                    cpr.proc.verifiedAdj = cpr.proc.setAdj;
+                }
+
+                Binder.restoreCallingIdentity(origId);
             }
 
             if (!providerRunning) {
@@ -12655,7 +12475,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
 
         // Wait for the provider to be published...
-        final long timeout = SystemClock.uptimeMillis() + CONTENT_PROVIDER_WAIT_TIMEOUT;
         synchronized (cpr) {
             while (cpr.provider == null) {
                 if (cpr.launchingApp == null) {
@@ -12670,22 +12489,13 @@ public class ActivityManagerService extends IActivityManager.Stub
                     return null;
                 }
                 try {
-                    final long wait = Math.max(0L, timeout - SystemClock.uptimeMillis());
                     if (DEBUG_MU) Slog.v(TAG_MU,
                             "Waiting to start provider " + cpr
-                            + " launchingApp=" + cpr.launchingApp + " for " + wait + " ms");
+                            + " launchingApp=" + cpr.launchingApp);
                     if (conn != null) {
                         conn.waiting = true;
                     }
-                    cpr.wait(wait);
-                    if (cpr.provider == null) {
-                        Slog.wtf(TAG, "Timeout waiting for provider "
-                                + cpi.applicationInfo.packageName + "/"
-                                + cpi.applicationInfo.uid + " for provider "
-                                + name
-                                + " providerRunning=" + providerRunning);
-                        return null;
-                    }
+                    cpr.wait();
                 } catch (InterruptedException ex) {
                 } finally {
                     if (conn != null) {
@@ -13089,10 +12899,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         RescueParty.onSettingsProviderPublished(mContext);
 
         //mUsageStatsService.monitorPackages();
-
-        // LineageActivityManager depends on settings so we can initialize only
-        // after providers are available.
-        mLineageActivityManager = new LineageActivityManager(mContext);
     }
 
     void startPersistentApps(int matchFlags) {
@@ -23240,7 +23046,6 @@ public class ActivityManagerService extends IActivityManager.Stub
                 // The process is being computed, so there is a cycle. We cannot
                 // rely on this process's state.
                 app.containsCycle = true;
-
                 return false;
             }
         }
@@ -23265,7 +23070,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         final int logUid = mCurOomAdjUid;
 
         int prevAppAdj = app.curAdj;
-        int prevProcState = app.curProcState;
 
         if (app.maxAdj <= ProcessList.FOREGROUND_APP_ADJ) {
             // The max adjustment doesn't allow this app to be anything
@@ -23553,19 +23357,6 @@ public class ActivityManagerService extends IActivityManager.Stub
             }
         }
 
-        // If the app was recently in the foreground and moved to a foreground service status,
-        // allow it to get a higher rank in memory for some time, compared to other foreground
-        // services so that it can finish performing any persistence/processing of in-memory state.
-        if (app.foregroundServices && adj > ProcessList.PERCEPTIBLE_RECENT_FOREGROUND_APP_ADJ
-                && (app.lastTopTime + mConstants.TOP_TO_FGS_GRACE_DURATION > now
-                    || app.setProcState <= ActivityManager.PROCESS_STATE_TOP)) {
-            adj = ProcessList.PERCEPTIBLE_RECENT_FOREGROUND_APP_ADJ;
-            app.adjType = "fg-service-act";
-            if (DEBUG_OOM_ADJ_REASON || logUid == appUid) {
-                reportOomAdjMessageLocked(TAG_OOM_ADJ, "Raise to recent fg: " + app);
-            }
-        }
-
         if (adj > ProcessList.PERCEPTIBLE_APP_ADJ
                 || procState > ActivityManager.PROCESS_STATE_TRANSIENT_BACKGROUND) {
             if (app.forcingToImportant != null) {
@@ -23757,16 +23548,11 @@ public class ActivityManagerService extends IActivityManager.Stub
                         ProcessRecord client = cr.binding.client;
                         computeOomAdjLocked(client, cachedAdj, TOP_APP, doingAll, now);
                         if (client.containsCycle) {
-                            // We've detected a cycle. We should retry computeOomAdjLocked later in
-                            // case a later-checked connection from a client  would raise its
-                            // priority legitimately.
+                            // We've detected a cycle. We should ignore this connection and allow
+                            // this process to retry computeOomAdjLocked later in case a later-checked
+                            // connection from a client  would raise its priority legitimately.
                             app.containsCycle = true;
-                            // If the client has not been completely evaluated, skip using its
-                            // priority. Else use the conservative value for now and look for a
-                            // better state in the next iteration.
-                            if (client.completedAdjSeq < mAdjSeq) {
-                                continue;
-                            }
+                            continue;
                         }
                         int clientAdj = client.curRawAdj;
                         int clientProcState = client.curProcState;
@@ -23830,10 +23616,6 @@ public class ActivityManagerService extends IActivityManager.Stub
                                         schedGroup = ProcessList.SCHED_GROUP_DEFAULT;
                                         procState = ActivityManager.PROCESS_STATE_PERSISTENT;
                                     }
-                                } else if ((cr.flags & Context.BIND_ADJUST_BELOW_PERCEPTIBLE) != 0
-                                        && clientAdj < ProcessList.PERCEPTIBLE_APP_ADJ
-                                        && adj > ProcessList.PERCEPTIBLE_APP_ADJ + 1) {
-                                    newAdj = ProcessList.PERCEPTIBLE_APP_ADJ + 1;
                                 } else if ((cr.flags&Context.BIND_NOT_VISIBLE) != 0
                                         && clientAdj < ProcessList.PERCEPTIBLE_APP_ADJ
                                         && adj > ProcessList.PERCEPTIBLE_APP_ADJ) {
@@ -23993,16 +23775,11 @@ public class ActivityManagerService extends IActivityManager.Stub
                 }
                 computeOomAdjLocked(client, cachedAdj, TOP_APP, doingAll, now);
                 if (client.containsCycle) {
-                    // We've detected a cycle. We should retry computeOomAdjLocked later in
-                    // case a later-checked connection from a client  would raise its
-                    // priority legitimately.
+                    // We've detected a cycle. We should ignore this connection and allow
+                    // this process to retry computeOomAdjLocked later in case a later-checked
+                    // connection from a client  would raise its priority legitimately.
                     app.containsCycle = true;
-                    // If the client has not been completely evaluated, skip using its
-                    // priority. Else use the conservative value for now and look for a
-                    // better state in the next iteration.
-                    if (client.completedAdjSeq < mAdjSeq) {
-                        continue;
-                    }
+                    continue;
                 }
                 int clientAdj = client.curRawAdj;
                 int clientProcState = client.curProcState;
@@ -24234,8 +24011,8 @@ public class ActivityManagerService extends IActivityManager.Stub
         app.foregroundActivities = foregroundActivities;
         app.completedAdjSeq = mAdjSeq;
 
-        // if curAdj or curProcState improved, then this process was promoted
-        return app.curAdj < prevAppAdj || app.curProcState < prevProcState;
+        // if curAdj is less than prevAppAdj, then this process was promoted
+        return app.curAdj < prevAppAdj;
     }
 
     /**
@@ -24804,8 +24581,6 @@ public class ActivityManagerService extends IActivityManager.Stub
             // Must be called before updating setProcState
             maybeUpdateUsageStatsLocked(app, nowElapsed);
 
-            maybeUpdateLastTopTime(app, now);
-
             app.setProcState = app.curProcState;
             if (app.setProcState >= ActivityManager.PROCESS_STATE_HOME) {
                 app.notCachedSinceIdle = false;
@@ -25030,13 +24805,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
     }
 
-    private void maybeUpdateLastTopTime(ProcessRecord app, long nowUptime) {
-        if (app.setProcState <= ActivityManager.PROCESS_STATE_TOP
-                && app.curProcState > ActivityManager.PROCESS_STATE_TOP) {
-            app.lastTopTime = nowUptime;
-        }
-    }
-
     private final void setProcessTrackerStateLocked(ProcessRecord proc, int memFactor, long now) {
         if (proc.thread != null) {
             if (proc.baseProcessTracker != null) {
@@ -25218,9 +24986,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         int nextCachedAdj = curCachedAdj+1;
         int curEmptyAdj = ProcessList.CACHED_APP_MIN_ADJ;
         int nextEmptyAdj = curEmptyAdj+2;
-        ProcessRecord selectedAppRecord = null;
-        long serviceLastActivity = 0;
-        int numBServices = 0;
 
         boolean retryCycles = false;
 
@@ -25231,34 +24996,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
         for (int i=N-1; i>=0; i--) {
             ProcessRecord app = mLruProcesses.get(i);
-            if (mEnableBServicePropagation && app.serviceb
-                    && (app.curAdj == ProcessList.SERVICE_B_ADJ)) {
-                numBServices++;
-                for (int s = app.services.size() - 1; s >= 0; s--) {
-                    ServiceRecord sr = app.services.valueAt(s);
-                    if (DEBUG_OOM_ADJ) Slog.d(TAG,"app.processName = " + app.processName
-                            + " serviceb = " + app.serviceb + " s = " + s + " sr.lastActivity = "
-                            + sr.lastActivity + " packageName = " + sr.packageName
-                            + " processName = " + sr.processName);
-                    if (SystemClock.uptimeMillis() - sr.lastActivity
-                            < mMinBServiceAgingTime) {
-                        if (DEBUG_OOM_ADJ) {
-                            Slog.d(TAG,"Not aged enough!!!");
-                        }
-                        continue;
-                    }
-                    if (serviceLastActivity == 0) {
-                        serviceLastActivity = sr.lastActivity;
-                        selectedAppRecord = app;
-                    } else if (sr.lastActivity < serviceLastActivity) {
-                        serviceLastActivity = sr.lastActivity;
-                        selectedAppRecord = app;
-                    }
-                }
-            }
-            if (DEBUG_OOM_ADJ && selectedAppRecord != null) Slog.d(TAG,
-                    "Identified app.processName = " + selectedAppRecord.processName
-                    + " app.pid = " + selectedAppRecord.pid);
             if (!app.killedByAm && app.thread != null) {
                 app.procStateChanged = false;
                 computeOomAdjLocked(app, ProcessList.UNKNOWN_ADJ, TOP_APP, true, now);
@@ -25328,7 +25065,7 @@ public class ActivityManagerService extends IActivityManager.Stub
         // - Continue retrying until no process was promoted.
         // - Iterate from least important to most important.
         int cycleCount = 0;
-        while (retryCycles && cycleCount < 10) {
+        while (retryCycles) {
             cycleCount++;
             retryCycles = false;
 
@@ -25343,14 +25080,12 @@ public class ActivityManagerService extends IActivityManager.Stub
             for (int i=0; i<N; i++) {
                 ProcessRecord app = mLruProcesses.get(i);
                 if (!app.killedByAm && app.thread != null && app.containsCycle == true) {
-
                     if (computeOomAdjLocked(app, ProcessList.UNKNOWN_ADJ, TOP_APP, true, now)) {
                         retryCycles = true;
                     }
                 }
             }
         }
-
         for (int i=N-1; i>=0; i--) {
             ProcessRecord app = mLruProcesses.get(i);
             if (!app.killedByAm && app.thread != null) {
@@ -25412,14 +25147,6 @@ public class ActivityManagerService extends IActivityManager.Stub
                     numTrimming++;
                 }
             }
-        }
-        if (numBServices > mBServiceAppThreshold && true == mAllowLowerMemLevel
-                && selectedAppRecord != null) {
-            ProcessList.setOomAdj(selectedAppRecord.pid, selectedAppRecord.info.uid,
-                    ProcessList.CACHED_APP_MAX_ADJ);
-            selectedAppRecord.setAdj = selectedAppRecord.curAdj;
-            if (DEBUG_OOM_ADJ) Slog.d(TAG,"app.processName = " + selectedAppRecord.processName
-                        + " app.pid = " + selectedAppRecord.pid + " is moved to higher adj");
         }
 
         incrementProcStateSeqAndNotifyAppsLocked();
@@ -26773,7 +26500,7 @@ public class ActivityManagerService extends IActivityManager.Stub
                         packageUid, packageName,
                         intents, resolvedTypes, null /* resultTo */,
                         SafeActivityOptions.fromBundle(bOptions), userId,
-                        false /* validateIncomingUser */, null /* originatingPendingIntent */);
+                        false /* validateIncomingUser */);
             }
         }
 
@@ -27063,22 +26790,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         }
 
         @Override
-        public boolean hasForegroundServiceNotification(String pkg, int userId,
-                String channelId) {
-            synchronized (ActivityManagerService.this) {
-                return mServices.hasForegroundServiceNotificationLocked(pkg, userId, channelId);
-            }
-        }
-
-        @Override
-        public void stopForegroundServicesForChannel(String pkg, int userId,
-                String channelId) {
-            synchronized (ActivityManagerService.this) {
-                mServices.stopForegroundServicesForChannelLocked(pkg, userId, channelId);
-            }
-        }
-
-        @Override
         public void cancelRecentsAnimation(boolean restoreHomeStackPosition) {
             ActivityManagerService.this.cancelRecentsAnimation(restoreHomeStackPosition);
         }
@@ -27120,25 +26831,6 @@ public class ActivityManagerService extends IActivityManager.Stub
         @Override
         public void enforceCallerIsRecentsOrHasPermission(String permission, String func) {
             ActivityManagerService.this.enforceCallerIsRecentsOrHasPermission(permission, func);
-        }
-
-        @Override
-        public Intent getHomeIntent() {
-            synchronized (ActivityManagerService.this) {
-                return ActivityManagerService.this.getHomeIntent();
-            }
-        }
-
-        @Override
-        public void notifyDefaultDisplaySizeChanged() {
-            synchronized (ActivityManagerService.this) {
-                if (mSystemServiceManager.isBootCompleted() && mHomeProcess != null) {
-
-                    // TODO: Ugly hack to unblock the release
-                    Slog.i(TAG, "Killing home process because of display size change");
-                    removeProcessLocked(mHomeProcess, false, true, "kill home screen size");
-                }
-            }
         }
     }
 
@@ -27398,9 +27090,8 @@ public class ActivityManagerService extends IActivityManager.Stub
             return null;
         }
 
-        public AppOpsService getAppOpsService(File file, Handler handler,
-                ActivityManagerService service) {
-            return new AppOpsService(file, handler, service);
+        public AppOpsService getAppOpsService(File file, Handler handler) {
+            return new AppOpsService(file, handler);
         }
 
         public Handler getUiHandler(ActivityManagerService service) {
@@ -27503,9 +27194,5 @@ public class ActivityManagerService extends IActivityManager.Stub
                 Binder.restoreCallingIdentity(origId);
             }
         }
-    }
-
-    public boolean shouldForceLongScreen(String packageName) {
-        return mLineageActivityManager.shouldForceLongScreen(packageName);
     }
 }

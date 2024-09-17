@@ -21,7 +21,6 @@ import android.annotation.Nullable;
 import android.content.ComponentName;
 import android.content.IIntentSender;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -404,33 +403,8 @@ public abstract class ActivityManagerInternal {
     public abstract List<ProcessMemoryState> getMemoryStateForProcesses();
 
     /**
-     * Returns {@code true} if the given notification channel currently has a
-     * notification associated with a foreground service.  This is an AMS check
-     * because that is the source of truth for the FGS state.
-     */
-    public abstract boolean hasForegroundServiceNotification(String pkg, int userId,
-            String channelId);
-
-    /**
-     * If the given app has any FGSs whose notifications are in the given channel,
-     * stop them.
-     */
-    public abstract void stopForegroundServicesForChannel(String pkg, int userId,
-            String channelId);
-
-    /**
      * This enforces {@code func} can only be called if either the caller is Recents activity or
      * has {@code permission}.
      */
     public abstract void enforceCallerIsRecentsOrHasPermission(String permission, String func);
-
-    /**
-     * @return The intent used to launch the home activity.
-     */
-    public abstract Intent getHomeIntent();
-
-    /**
-     * WindowManager notifies AM when display size of the default display changes.
-     */
-    public abstract void notifyDefaultDisplaySizeChanged();
 }

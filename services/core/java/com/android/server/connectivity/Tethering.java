@@ -40,7 +40,6 @@ import static android.net.ConnectivityManager.TETHERING_BLUETOOTH;
 import static android.net.ConnectivityManager.TETHERING_INVALID;
 import static android.net.ConnectivityManager.TETHERING_USB;
 import static android.net.ConnectivityManager.TETHERING_WIFI;
-import static android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN;
 import static android.net.NetworkCapabilities.TRANSPORT_CELLULAR;
 import static android.net.wifi.WifiManager.EXTRA_WIFI_AP_INTERFACE_NAME;
 import static android.net.wifi.WifiManager.EXTRA_WIFI_AP_MODE;
@@ -66,7 +65,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Resources;
-import android.database.ContentObserver;
 import android.hardware.usb.UsbManager;
 import android.net.INetworkPolicyManager;
 import android.net.INetworkStatsService;
@@ -124,8 +122,6 @@ import com.android.server.connectivity.tethering.TetheringDependencies;
 import com.android.server.connectivity.tethering.TetheringInterfaceUtils;
 import com.android.server.connectivity.tethering.UpstreamNetworkMonitor;
 import com.android.server.net.BaseNetworkObserver;
-
-import lineageos.providers.LineageSettings;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -295,18 +291,6 @@ public class Tethering extends BaseNetworkObserver {
         if (umi != null) {
             umi.addUserRestrictionsListener(new TetheringUserRestrictionListener(this));
         }
-
-        // Listen for allowing tethering upstream via VPN settings changes
-        final ContentObserver vpnSettingObserver = new ContentObserver(handler) {
-            @Override
-            public void onChange(boolean self) {
-                // Reconsider tethering upstream
-                mTetherMasterSM.sendMessage(TetherMasterSM.CMD_UPSTREAM_CHANGED);
-            }
-        };
-        mContext.getContentResolver().registerContentObserver(LineageSettings.Secure.getUriFor(
-                LineageSettings.Secure.TETHERING_ALLOW_VPN_UPSTREAMS), false, vpnSettingObserver,
-                UserHandle.USER_ALL);
     }
 
     private WifiManager getWifiManager() {
@@ -1366,11 +1350,8 @@ public class Tethering extends BaseNetworkObserver {
             // do not currently know how to watch for changes in DUN settings.
             maybeUpdateConfiguration();
 
-            final TetheringConfiguration config = mConfig;
-            final NetworkState ns = (config.chooseUpstreamAutomatically)
-                    ? mUpstreamNetworkMonitor.getCurrentPreferredUpstream()
-                    : mUpstreamNetworkMonitor.selectPreferredUpstreamType(
-                            config.preferredUpstreamIfaceTypes);
+            final NetworkState ns = mUpstreamNetworkMonitor.selectPreferredUpstreamType(
+                    mConfig.preferredUpstreamIfaceTypes);
             if (ns == null) {
                 if (tryCell) {
                     mUpstreamNetworkMonitor.registerMobileNetworkRequest();
@@ -1399,7 +1380,9 @@ public class Tethering extends BaseNetworkObserver {
             }
             notifyDownstreamsOfNewUpstreamIface(ifaces);
             if (ns != null && pertainsToCurrentUpstream(ns)) {
-                // If we already have NetworkState for this network update it immediately.
+                // If we already have NetworkState for this network examine
+                // it immediately, because there likely will be no second
+                // EVENT_ON_AVAILABLE (it was already received).
                 handleNewUpstreamNetworkState(ns);
             } else if (mCurrentUpstreamIfaceSet == null) {
                 // There are no available upstream networks.
@@ -1515,6 +1498,15 @@ public class Tethering extends BaseNetworkObserver {
             }
 
             switch (arg1) {
+                case UpstreamNetworkMonitor.EVENT_ON_AVAILABLE:
+                    // The default network changed, or DUN connected
+                    // before this callback was processed. Updates
+                    // for the current NetworkCapabilities and
+                    // LinkProperties have been requested (default
+                    // request) or are being sent shortly (DUN). Do
+                    // nothing until they arrive; if no updates
+                    // arrive there's nothing to do.
+                    break;
                 case UpstreamNetworkMonitor.EVENT_ON_CAPABILITIES:
                     handleNewUpstreamNetworkState(ns);
                     break;
@@ -1547,7 +1539,7 @@ public class Tethering extends BaseNetworkObserver {
                 }
 
                 mSimChange.startListening();
-                mUpstreamNetworkMonitor.start(mDeps.getDefaultNetworkRequest());
+                mUpstreamNetworkMonitor.start();
 
                 // TODO: De-duplicate with updateUpstreamWanted() below.
                 if (upstreamWanted()) {
@@ -1764,12 +1756,6 @@ public class Tethering extends BaseNetworkObserver {
             }
 
             public void updateUpstreamNetworkState(NetworkState ns) {
-                // Disable hw offload on vpn upstream interfaces.
-                // setUpstreamLinkProperties() interprets null as disable.
-                if (ns != null && ns.networkCapabilities != null
-                        && !ns.networkCapabilities.hasCapability(NET_CAPABILITY_NOT_VPN)) {
-                    ns = null;
-                }
                 mOffloadController.setUpstreamLinkProperties(
                         (ns != null) ? ns.linkProperties : null);
             }

@@ -22,8 +22,6 @@ import android.annotation.Nullable;
 import android.app.Fragment;
 import android.app.StatusBarManager;
 import android.os.Bundle;
-import android.os.Parcelable;
-import android.util.SparseArray;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -41,15 +39,13 @@ import com.android.systemui.statusbar.policy.EncryptionHelper;
 import com.android.systemui.statusbar.policy.KeyguardMonitor;
 import com.android.systemui.statusbar.policy.NetworkController;
 import com.android.systemui.statusbar.policy.NetworkController.SignalCallback;
-import com.android.systemui.tuner.TunerService;
 
 /**
  * Contains the collapsed status bar and handles hiding/showing based on disable flags
  * and keyguard state. Also manages lifecycle to make sure the views it contains are being
  * updated by the StatusBarIconController and DarkIconManager while it is attached.
  */
-public class CollapsedStatusBarFragment extends Fragment implements CommandQueue.Callbacks,
-        TunerService.Tunable {
+public class CollapsedStatusBarFragment extends Fragment implements CommandQueue.Callbacks {
 
     public static final String TAG = "CollapsedStatusBarFragment";
     private static final String EXTRA_PANEL_STATE = "panel_state";
@@ -60,14 +56,12 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
     private KeyguardMonitor mKeyguardMonitor;
     private NetworkController mNetworkController;
     private LinearLayout mSystemIconArea;
+    private View mClockView;
     private View mNotificationIconAreaInner;
-    private View mNetworkTrafficHolder;
     private int mDisabled1;
     private StatusBar mStatusBarComponent;
     private DarkIconManager mDarkIconManager;
     private View mOperatorNameFrame;
-    private ClockController mClockController;
-    private boolean mIsClockBlacklisted;
 
     private SignalCallback mSignalCallback = new SignalCallback() {
         @Override
@@ -82,9 +76,6 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
         mKeyguardMonitor = Dependency.get(KeyguardMonitor.class);
         mNetworkController = Dependency.get(NetworkController.class);
         mStatusBarComponent = SysUiServiceProvider.getComponent(getContext(), StatusBar.class);
-
-        Dependency.get(TunerService.class).addTunable(this,
-                StatusBarIconController.ICON_BLACKLIST);
     }
 
     @Override
@@ -98,15 +89,13 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
         super.onViewCreated(view, savedInstanceState);
         mStatusBar = (PhoneStatusBarView) view;
         if (savedInstanceState != null && savedInstanceState.containsKey(EXTRA_PANEL_STATE)) {
-            mStatusBar.restoreHierarchyState(
-                    savedInstanceState.getSparseParcelableArray(EXTRA_PANEL_STATE));
+            mStatusBar.go(savedInstanceState.getInt(EXTRA_PANEL_STATE));
         }
         mDarkIconManager = new DarkIconManager(view.findViewById(R.id.statusIcons));
         mDarkIconManager.setShouldLog(true);
         Dependency.get(StatusBarIconController.class).addIconGroup(mDarkIconManager);
         mSystemIconArea = mStatusBar.findViewById(R.id.system_icon_area);
-        mNetworkTrafficHolder = mStatusBar.findViewById(R.id.network_traffic_holder);
-        mClockController = new ClockController(mStatusBar);
+        mClockView = mStatusBar.findViewById(R.id.clock);
         showSystemIconArea(false);
         showClock(false);
         initEmergencyCryptkeeperText();
@@ -116,9 +105,7 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
     @Override
     public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
-        SparseArray<Parcelable> states = new SparseArray<>();
-        mStatusBar.saveHierarchyState(states);
-        outState.putSparseParcelableArray(EXTRA_PANEL_STATE, states);
+        outState.putInt(EXTRA_PANEL_STATE, mStatusBar.getState());
     }
 
     @Override
@@ -139,15 +126,6 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
         Dependency.get(StatusBarIconController.class).removeIconGroup(mDarkIconManager);
         if (mNetworkController.hasEmergencyCryptKeeperText()) {
             mNetworkController.removeCallback(mSignalCallback);
-        }
-    }
-
-    @Override
-    public void onTuningChanged(String key, String newValue) {
-        boolean wasClockBlacklisted = mIsClockBlacklisted;
-        mIsClockBlacklisted = StatusBarIconController.getIconBlacklist(newValue).contains("clock");
-        if (wasClockBlacklisted && !mIsClockBlacklisted) {
-            showClock(false);
         }
     }
 
@@ -189,9 +167,8 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
         }
         // The clock may have already been hidden, but we might want to shift its
         // visibility to GONE from INVISIBLE or vice versa
-        if ((diff1 & DISABLE_CLOCK) != 0 ||
-                mClockController.getClock().getVisibility() != clockHiddenMode()) {
-            if ((state1 & DISABLE_CLOCK) != 0 || mIsClockBlacklisted) {
+        if ((diff1 & DISABLE_CLOCK) != 0 || mClockView.getVisibility() != clockHiddenMode()) {
+            if ((state1 & DISABLE_CLOCK) != 0) {
                 hideClock(animate);
             } else {
                 showClock(animate);
@@ -207,18 +184,6 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
             state |= DISABLE_SYSTEM_INFO;
             state |= DISABLE_CLOCK;
         }
-
-        // In landscape, the heads up show but shouldHideNotificationIcons() return false
-        // because the visual icon is in notification icon area rather than heads up's space.
-        // whether the notification icon show or not, clock should hide when heads up show.
-        if (mStatusBarComponent.isHeadsUpShouldBeVisible()) {
-            View clockView = mClockController.getClock();
-            boolean isRightClock = clockView.getId() == R.id.clock_right;
-            if (!isRightClock) {
-                state |= DISABLE_CLOCK;
-            }
-        }
-
         if (mNetworkController != null && EncryptionHelper.IS_DATA_ENCRYPTED) {
             if (mNetworkController.hasEmergencyCryptKeeperText()) {
                 state |= DISABLE_NOTIFICATION_ICONS;
@@ -242,20 +207,18 @@ public class CollapsedStatusBarFragment extends Fragment implements CommandQueue
 
     public void hideSystemIconArea(boolean animate) {
         animateHide(mSystemIconArea, animate);
-        animateHide(mNetworkTrafficHolder, animate);
     }
 
     public void showSystemIconArea(boolean animate) {
         animateShow(mSystemIconArea, animate);
-        animateShow(mNetworkTrafficHolder, animate);
     }
 
     public void hideClock(boolean animate) {
-        animateHiddenState(mClockController.getClock(), clockHiddenMode(), animate);
+        animateHiddenState(mClockView, clockHiddenMode(), animate);
     }
 
     public void showClock(boolean animate) {
-        animateShow(mClockController.getClock(), animate);
+        animateShow(mClockView, animate);
     }
 
     /**

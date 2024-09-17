@@ -211,6 +211,10 @@ public abstract class QSTileImpl<TState extends State> implements QSTile {
         mHandler.obtainMessage(H.REFRESH_STATE, arg).sendToTarget();
     }
 
+    public void clearState() {
+        mHandler.sendEmptyMessage(H.CLEAR_STATE);
+    }
+
     public void userSwitch(int newUserId) {
         mHandler.obtainMessage(H.USER_SWITCH, newUserId, 0).sendToTarget();
     }
@@ -261,6 +265,11 @@ public abstract class QSTileImpl<TState extends State> implements QSTile {
     }
 
     public abstract Intent getLongClickIntent();
+
+    protected void handleClearState() {
+        mTmpState = newTileState();
+        mState = newTileState();
+    }
 
     protected void handleRefreshState(Object arg) {
         handleUpdateState(mTmpState, arg);
@@ -400,10 +409,11 @@ public abstract class QSTileImpl<TState extends State> implements QSTile {
         private static final int TOGGLE_STATE_CHANGED = 8;
         private static final int SCAN_STATE_CHANGED = 9;
         private static final int DESTROY = 10;
-        private static final int REMOVE_CALLBACKS = 11;
-        private static final int REMOVE_CALLBACK = 12;
-        private static final int SET_LISTENING = 13;
-        private static final int STALE = 14;
+        private static final int CLEAR_STATE = 11;
+        private static final int REMOVE_CALLBACKS = 12;
+        private static final int REMOVE_CALLBACK = 13;
+        private static final int SET_LISTENING = 14;
+        private static final int STALE = 15;
 
         @VisibleForTesting
         protected H(Looper looper) {
@@ -457,6 +467,9 @@ public abstract class QSTileImpl<TState extends State> implements QSTile {
                 } else if (msg.what == DESTROY) {
                     name = "handleDestroy";
                     handleDestroy();
+                } else if (msg.what == CLEAR_STATE) {
+                    name = "handleClearState";
+                    handleClearState();
                 } else if (msg.what == SET_LISTENING) {
                     name = "handleSetListeningInternal";
                     handleSetListeningInternal(msg.obj, msg.arg1 != 0);

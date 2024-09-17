@@ -93,14 +93,6 @@ public abstract class FileSystemProvider extends DocumentsProvider {
         // Default is no-op
     }
 
-    /**
-     * Callback indicating that the given document has been deleted or moved. This gives
-     * the provider a hook to revoke the uri permissions.
-     */
-    protected void onDocIdDeleted(String docId) {
-        // Default is no-op
-    }
-
     @Override
     public boolean onCreate() {
         throw new UnsupportedOperationException(
@@ -244,7 +236,6 @@ public abstract class FileSystemProvider extends DocumentsProvider {
         displayName = FileUtils.buildValidFatFilename(displayName);
 
         final File before = getFileForDocId(docId);
-        final File beforeVisibleFile = getFileForDocId(docId, true);
         final File after = FileUtils.buildUniqueFile(before.getParentFile(), displayName);
         if (!before.renameTo(after)) {
             throw new IllegalStateException("Failed to rename to " + after);
@@ -252,9 +243,9 @@ public abstract class FileSystemProvider extends DocumentsProvider {
 
         final String afterDocId = getDocIdForFile(after);
         onDocIdChanged(docId);
-        onDocIdDeleted(docId);
         onDocIdChanged(afterDocId);
 
+        final File beforeVisibleFile = getFileForDocId(docId, true);
         final File afterVisibleFile = getFileForDocId(afterDocId, true);
         moveInMediaStore(beforeVisibleFile, afterVisibleFile);
 
@@ -283,7 +274,6 @@ public abstract class FileSystemProvider extends DocumentsProvider {
 
         final String docId = getDocIdForFile(after);
         onDocIdChanged(sourceDocumentId);
-        onDocIdDeleted(sourceDocumentId);
         onDocIdChanged(docId);
         moveInMediaStore(visibleFileBefore, getFileForDocId(docId, true));
 
@@ -335,7 +325,6 @@ public abstract class FileSystemProvider extends DocumentsProvider {
         }
 
         onDocIdChanged(docId);
-        onDocIdDeleted(docId);
         removeFromMediaStore(visibleFile, isDirectory);
     }
 

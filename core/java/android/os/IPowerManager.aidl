@@ -42,7 +42,6 @@ interface IPowerManager
 
     void userActivity(long time, int event, int flags);
     void wakeUp(long time, String reason, String opPackageName);
-    void wakeUpWithProximityCheck(long time, String reason, String opPackageName);
     void goToSleep(long time, int reason, int flags);
     void nap(long time);
     boolean isInteractive();
@@ -53,7 +52,6 @@ interface IPowerManager
     boolean isLightDeviceIdleMode();
 
     void reboot(boolean confirm, String reason, boolean wait);
-    void rebootCustom(boolean confirm, String reason, boolean wait);
     void rebootSafeMode(boolean confirm, boolean wait);
     void shutdown(boolean confirm, String reason, boolean wait);
     void crash(String message);

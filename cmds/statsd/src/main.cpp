@@ -96,27 +96,6 @@ static status_t start_log_reader_thread(const sp<StatsService>& service) {
     return NO_ERROR;
 }
 
-
-sp<StatsService> gStatsService = nullptr;
-
-void sigHandler(int sig) {
-    if (gStatsService != nullptr) {
-        gStatsService->Terminate();
-    }
-}
-
-void registerSigHandler()
-{
-    struct sigaction sa;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    sa.sa_handler = sigHandler;
-    sigaction(SIGHUP, &sa, nullptr);
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGQUIT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
-}
-
 int main(int /*argc*/, char** /*argv*/) {
     // Set up the looper
     sp<Looper> looper(Looper::prepare(0 /* opts */));
@@ -129,24 +108,21 @@ int main(int /*argc*/, char** /*argv*/) {
     IPCThreadState::self()->disableBackgroundScheduling(true);
 
     // Create the service
-    gStatsService = new StatsService(looper);
-    if (defaultServiceManager()->addService(String16("stats"), gStatsService) != 0) {
+    sp<StatsService> service = new StatsService(looper);
+    if (defaultServiceManager()->addService(String16("stats"), service) != 0) {
         ALOGE("Failed to add service");
         return -1;
     }
+    service->sayHiToStatsCompanion();
 
-    registerSigHandler();
+    service->Startup();
 
-    gStatsService->sayHiToStatsCompanion();
-
-    gStatsService->Startup();
-
-    sp<StatsSocketListener> socketListener = new StatsSocketListener(gStatsService);
+    sp<StatsSocketListener> socketListener = new StatsSocketListener(service);
 
     if (kUseLogd) {
         ALOGI("using logd");
         // Start the log reader thread
-        status_t err = start_log_reader_thread(gStatsService);
+        status_t err = start_log_reader_thread(service);
         if (err != NO_ERROR) {
             return 1;
         }

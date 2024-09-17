@@ -56,9 +56,6 @@ import static android.net.NetworkPolicyManager.MASK_METERED_NETWORKS;
 import static android.net.NetworkPolicyManager.POLICY_ALLOW_METERED_BACKGROUND;
 import static android.net.NetworkPolicyManager.POLICY_NONE;
 import static android.net.NetworkPolicyManager.POLICY_REJECT_METERED_BACKGROUND;
-import static android.net.NetworkPolicyManager.POLICY_REJECT_ON_DATA;
-import static android.net.NetworkPolicyManager.POLICY_REJECT_ON_VPN;
-import static android.net.NetworkPolicyManager.POLICY_REJECT_ON_WLAN;
 import static android.net.NetworkPolicyManager.RULE_ALLOW_ALL;
 import static android.net.NetworkPolicyManager.RULE_ALLOW_METERED;
 import static android.net.NetworkPolicyManager.RULE_NONE;
@@ -1321,8 +1318,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
 
                 builder.setSmallIcon(R.drawable.stat_notify_error);
 
-                final Intent snoozeIntent = buildSnoozeWarningIntent(policy.template,
-                        mContext.getPackageName());
+                final Intent snoozeIntent = buildSnoozeWarningIntent(policy.template);
                 builder.setDeleteIntent(PendingIntent.getBroadcast(
                         mContext, 0, snoozeIntent, PendingIntent.FLAG_UPDATE_CURRENT));
 
@@ -1388,8 +1384,7 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
 
                 builder.setSmallIcon(R.drawable.stat_notify_error);
 
-                final Intent snoozeIntent = buildSnoozeRapidIntent(policy.template,
-                        mContext.getPackageName());
+                final Intent snoozeIntent = buildSnoozeRapidIntent(policy.template);
                 builder.setDeleteIntent(PendingIntent.getBroadcast(
                         mContext, 0, snoozeIntent, PendingIntent.FLAG_UPDATE_CURRENT));
 
@@ -3996,14 +3991,6 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
         final int oldRule = oldUidRules & MASK_METERED_NETWORKS;
         int newRule = RULE_NONE;
 
-        try {
-            mNetworkManager.restrictAppOnData(uid, (uidPolicy & POLICY_REJECT_ON_DATA) != 0);
-            mNetworkManager.restrictAppOnVpn(uid, (uidPolicy & POLICY_REJECT_ON_VPN) != 0);
-            mNetworkManager.restrictAppOnWlan(uid, (uidPolicy & POLICY_REJECT_ON_WLAN) != 0);
-        } catch (RemoteException e) {
-            // ignored; service lives in system_server
-        }
-
         // First step: define the new rule based on user restrictions and foreground state.
         if (isRestrictedByAdmin) {
             newRule = RULE_REJECT_METERED;
@@ -4690,19 +4677,17 @@ public class NetworkPolicyManagerService extends INetworkPolicyManager.Stub {
         return new Intent(ACTION_ALLOW_BACKGROUND);
     }
 
-    private static Intent buildSnoozeWarningIntent(NetworkTemplate template, String targetPackage) {
+    private static Intent buildSnoozeWarningIntent(NetworkTemplate template) {
         final Intent intent = new Intent(ACTION_SNOOZE_WARNING);
         intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         intent.putExtra(EXTRA_NETWORK_TEMPLATE, template);
-        intent.setPackage(targetPackage);
         return intent;
     }
 
-    private static Intent buildSnoozeRapidIntent(NetworkTemplate template, String targetPackage) {
+    private static Intent buildSnoozeRapidIntent(NetworkTemplate template) {
         final Intent intent = new Intent(ACTION_SNOOZE_RAPID);
         intent.addFlags(Intent.FLAG_RECEIVER_FOREGROUND);
         intent.putExtra(EXTRA_NETWORK_TEMPLATE, template);
-        intent.setPackage(targetPackage);
         return intent;
     }
 

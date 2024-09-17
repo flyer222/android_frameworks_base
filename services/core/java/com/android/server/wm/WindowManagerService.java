@@ -55,7 +55,6 @@ import static android.view.WindowManager.LayoutParams.TYPE_DREAM;
 import static android.view.WindowManager.LayoutParams.TYPE_INPUT_METHOD;
 import static android.view.WindowManager.LayoutParams.TYPE_INPUT_METHOD_DIALOG;
 import static android.view.WindowManager.LayoutParams.TYPE_NAVIGATION_BAR;
-import static android.view.WindowManager.LayoutParams.TYPE_PRESENTATION;
 import static android.view.WindowManager.LayoutParams.TYPE_PRIVATE_PRESENTATION;
 import static android.view.WindowManager.LayoutParams.TYPE_QS_DIALOG;
 import static android.view.WindowManager.LayoutParams.TYPE_STATUS_BAR;
@@ -335,7 +334,7 @@ public class WindowManagerService extends IWindowManager.Stub
     static final long DEFAULT_INPUT_DISPATCHING_TIMEOUT_NANOS = 5000 * 1000000L;
 
     // Poll interval in milliseconds for watching boot animation finished.
-    private static final int BOOT_ANIMATION_POLL_INTERVAL = 200;
+    private static final int BOOT_ANIMATION_POLL_INTERVAL = 10;
 
     // The name of the boot animation service in init.rc.
     private static final String BOOT_ANIMATION_SERVICE = "bootanim";
@@ -1006,6 +1005,7 @@ public class WindowManagerService extends IWindowManager.Stub
         mAppTransition.registerListenerLocked(mActivityManagerAppTransitionNotifier);
 
         final AnimationHandler animationHandler = new AnimationHandler();
+        animationHandler.setProvider(new SfVsyncFrameCallbackProvider());
         mBoundsAnimationController = new BoundsAnimationController(context, mAppTransition,
                 AnimationThread.getHandler(), animationHandler);
 
@@ -1061,7 +1061,7 @@ public class WindowManagerService extends IWindowManager.Stub
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK | PowerManager.ON_AFTER_RELEASE, TAG_WM);
         mHoldingScreenWakeLock.setReferenceCounted(false);
 
-        mSurfaceAnimationRunner = new SurfaceAnimationRunner(mPowerManagerInternal);
+        mSurfaceAnimationRunner = new SurfaceAnimationRunner();
 
         mAllowTheaterModeWakeFromLayout = context.getResources().getBoolean(
                 com.android.internal.R.bool.config_allowTheaterModeWakeFromWindowLayout);
@@ -1181,13 +1181,6 @@ public class WindowManagerService extends IWindowManager.Stub
             if (type == TYPE_PRIVATE_PRESENTATION && !displayContent.isPrivate()) {
                 Slog.w(TAG_WM, "Attempted to add private presentation window to a non-private display.  Aborting.");
                 return WindowManagerGlobal.ADD_PERMISSION_DENIED;
-            }
-
-            if (type == TYPE_PRESENTATION && !displayContent.getDisplay().isPublicPresentation()) {
-                Slog.w(TAG_WM,
-                        "Attempted to add presentation window to a non-suitable display.  "
-                                + "Aborting.");
-                return WindowManagerGlobal.ADD_INVALID_DISPLAY;
             }
 
             AppWindowToken atoken = null;
@@ -1348,13 +1341,8 @@ public class WindowManagerService extends IWindowManager.Stub
                 return res;
             }
 
-            boolean openInputChannels = (outInputChannel != null
-                && (attrs.inputFeatures & INPUT_FEATURE_NO_INPUT_CHANNEL) == 0);
-            if (callingUid != SYSTEM_UID) {
-                Slog.e(TAG_WM,
-                    "App trying to use insecure INPUT_FEATURE_NO_INPUT_CHANNEL flag. Ignoring");
-                openInputChannels = true;
-            }
+            final boolean openInputChannels = (outInputChannel != null
+                    && (attrs.inputFeatures & INPUT_FEATURE_NO_INPUT_CHANNEL) == 0);
             if  (openInputChannels) {
                 win.openInputChannel(outInputChannel);
             }
@@ -1895,13 +1883,6 @@ public class WindowManagerService extends IWindowManager.Stub
             }
 
             win.setFrameNumber(frameNumber);
-
-            if (win.mPendingForcedSeamlessRotate != null && !mWaitingForConfig) {
-                win.mPendingForcedSeamlessRotate.finish(win.mToken, win);
-                win.mFinishForcedSeamlessRotateFrameNumber = win.getFrameNumber();
-                win.mPendingForcedSeamlessRotate = null;
-            }
-
             int attrChanges = 0;
             int flagChanges = 0;
             if (attrs != null) {
@@ -3231,11 +3212,6 @@ public class WindowManagerService extends IWindowManager.Stub
         return mPointerEventDispatcher != null;
     }
 
-    @Override
-    public void addSystemUIVisibilityFlag(int flags) {
-        mLastStatusBarVisibility |= flags;
-    }
-
     // Called by window manager policy. Not exposed externally.
     @Override
     public int getLidState() {
@@ -3306,14 +3282,6 @@ public class WindowManagerService extends IWindowManager.Stub
         // Pass in the UI context, since ShutdownThread requires it (to show UI).
         ShutdownThread.reboot(ActivityThread.currentActivityThread().getSystemUiContext(),
                 PowerManager.SHUTDOWN_USER_REQUESTED, confirm);
-    }
-
-    // Called by window manager policy.  Not exposed externally.
-    @Override
-    public void reboot(boolean confirm, String reason) {
-        // Pass in the UI context, since ShutdownThread requires it (to show UI).
-        ShutdownThread.rebootCustom(ActivityThread.currentActivityThread().getSystemUiContext(),
-                reason, confirm);
     }
 
     // Called by window manager policy.  Not exposed externally.
@@ -6242,17 +6210,6 @@ public class WindowManagerService extends IWindowManager.Stub
             if (appWindow != null) {
                 mUnknownAppVisibilityController.notifyAppResumedFinished(appWindow);
             }
-        }
-    }
-
-    /**
-     * Returns true if the callingUid has any window currently visible to the user.
-     */
-    public boolean isAnyWindowVisibleForUid(int callingUid) {
-        synchronized (mWindowMap) {
-            return mRoot.forAllWindows(w -> {
-                return w.getOwningUid() == callingUid && w.isVisible();
-            }, true /* traverseTopToBottom */);
         }
     }
 

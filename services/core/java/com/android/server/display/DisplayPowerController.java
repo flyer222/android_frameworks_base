@@ -16,11 +16,16 @@
 
 package com.android.server.display;
 
+import android.app.ActivityManager;
+import com.android.internal.app.IBatteryStats;
+import com.android.server.LocalServices;
+import com.android.server.am.BatteryStatsService;
+import com.android.server.policy.WindowManagerPolicy;
+
 import android.animation.Animator;
 import android.animation.ObjectAnimator;
 import android.annotation.Nullable;
 import android.annotation.UserIdInt;
-import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.ParceledListSlice;
 import android.content.res.Resources;
@@ -48,12 +53,6 @@ import android.util.MathUtils;
 import android.util.Slog;
 import android.util.TimeUtils;
 import android.view.Display;
-
-import com.android.internal.app.IBatteryStats;
-import com.android.server.LocalServices;
-import com.android.server.am.BatteryStatsService;
-import com.android.server.lights.LightsManager;
-import com.android.server.policy.WindowManagerPolicy;
 
 import java.io.PrintWriter;
 
@@ -141,9 +140,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
 
     // Battery stats.
     private final IBatteryStats mBatteryStats;
-
-    // The lights service.
-    private final LightsManager mLights;
 
     // The sensor manager.
     private final SensorManager mSensorManager;
@@ -378,7 +374,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         mCallbacks = callbacks;
 
         mBatteryStats = BatteryStatsService.getService();
-        mLights = LocalServices.getService(LightsManager.class);
         mSensorManager = sensorManager;
         mWindowManagerPolicy = LocalServices.getService(WindowManagerPolicy.class);
         mBlanker = blanker;
@@ -427,25 +422,14 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                     com.android.internal.R.fraction.config_screenAutoBrightnessDozeScaleFactor,
                     1, 1);
 
-            int[] ambientBrighteningThresholds = resources.getIntArray(
-                    com.android.internal.R.array.config_ambientBrighteningThresholds);
-            int[] ambientDarkeningThresholds = resources.getIntArray(
-                    com.android.internal.R.array.config_ambientDarkeningThresholds);
-            int[] ambientThresholdLevels = resources.getIntArray(
-                    com.android.internal.R.array.config_ambientThresholdLevels);
-            HysteresisLevels ambientBrightnessThresholds = new HysteresisLevels(
-                    ambientBrighteningThresholds, ambientDarkeningThresholds,
-                    ambientThresholdLevels);
-
-            int[] screenBrighteningThresholds = resources.getIntArray(
-                    com.android.internal.R.array.config_screenBrighteningThresholds);
-            int[] screenDarkeningThresholds = resources.getIntArray(
-                    com.android.internal.R.array.config_screenDarkeningThresholds);
-            int[] screenThresholdLevels = resources.getIntArray(
-                    com.android.internal.R.array.config_screenThresholdLevels);
-            HysteresisLevels screenBrightnessThresholds = new HysteresisLevels(
-                    screenBrighteningThresholds, screenDarkeningThresholds, screenThresholdLevels);
-
+            int[] brightLevels = resources.getIntArray(
+                    com.android.internal.R.array.config_dynamicHysteresisBrightLevels);
+            int[] darkLevels = resources.getIntArray(
+                    com.android.internal.R.array.config_dynamicHysteresisDarkLevels);
+            int[] luxHysteresisLevels = resources.getIntArray(
+                    com.android.internal.R.array.config_dynamicHysteresisLuxLevels);
+            HysteresisLevels hysteresisLevels = new HysteresisLevels(
+                    brightLevels, darkLevels, luxHysteresisLevels);
 
             long brighteningLightDebounce = resources.getInteger(
                     com.android.internal.R.integer.config_autoBrightnessBrighteningLightDebounce);
@@ -475,14 +459,13 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                         lightSensorWarmUpTimeConfig, mScreenBrightnessRangeMinimum,
                         mScreenBrightnessRangeMaximum, dozeScaleFactor, lightSensorRate,
                         initialLightSensorRate, brighteningLightDebounce, darkeningLightDebounce,
-                        autoBrightnessResetAmbientLuxAfterWarmUp, ambientBrightnessThresholds,
-                        screenBrightnessThresholds);
+                        autoBrightnessResetAmbientLuxAfterWarmUp, hysteresisLevels);
             } else {
                 mUseSoftwareAutoBrightnessConfig = false;
             }
         }
 
-        mColorFadeEnabled = !ActivityManager.isLowRamDeviceStatic();
+        mColorFadeEnabled = true;//!ActivityManager.isLowRamDeviceStatic();
         mColorFadeFadesConfig = resources.getBoolean(
                 com.android.internal.R.bool.config_animateScreenLights);
 
@@ -786,12 +769,6 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         // Use zero brightness when screen is off.
         if (state == Display.STATE_OFF) {
             brightness = PowerManager.BRIGHTNESS_OFF;
-            mLights.getLight(LightsManager.LIGHT_ID_BUTTONS).setBrightness(brightness);
-        }
-
-        // Disable button lights when dozing
-        if (state == Display.STATE_DOZE || state == Display.STATE_DOZE_SUSPEND) {
-            mLights.getLight(LightsManager.LIGHT_ID_BUTTONS).setBrightness(PowerManager.BRIGHTNESS_OFF);
         }
 
         // Always use the VR brightness when in the VR state.
@@ -814,6 +791,9 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
                     && mAutomaticBrightnessController != null;
 
         final boolean userSetBrightnessChanged = updateUserSetScreenBrightness();
+        if (userSetBrightnessChanged) {
+            mTemporaryScreenBrightness = -1;
+        }
 
         // Use the temporary screen brightness if there isn't an override, either from
         // WindowManager or based on the display state.
@@ -1534,13 +1514,11 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
         }
         if (mCurrentScreenBrightnessSetting == mPendingScreenBrightnessSetting) {
             mPendingScreenBrightnessSetting = -1;
-            mTemporaryScreenBrightness = -1;
             return false;
         }
         mCurrentScreenBrightnessSetting = mPendingScreenBrightnessSetting;
         mLastUserSetScreenBrightness = mPendingScreenBrightnessSetting;
         mPendingScreenBrightnessSetting = -1;
-        mTemporaryScreenBrightness = -1;
         return true;
     }
 

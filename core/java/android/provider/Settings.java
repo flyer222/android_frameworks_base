@@ -899,19 +899,6 @@ public final class Settings {
 
     /**
      * @hide
-     * Activity Action: Show the "app ops" details screen.
-     * <p>
-     * Input: The Intent's data URI specifies the application package name
-     * to be shown, with the "package" scheme.  That is "package:com.my.app".
-     * <p>
-     * Output: Nothing.
-     */
-    @SdkConstant(SdkConstantType.ACTIVITY_INTENT_ACTION)
-    public static final String ACTION_APP_OPS_DETAILS_SETTINGS =
-            "android.settings.APP_OPS_DETAILS_SETTINGS";
-
-    /**
-     * @hide
      * Activity Action: Show the "app ops" settings screen.
      * <p>
      * Input: Nothing.
@@ -2300,8 +2287,6 @@ public final class Settings {
 
             // At one time in System, then Global, but now back in Secure
             MOVED_TO_SECURE.add(Secure.INSTALL_NON_MARKET_APPS);
-
-            MOVED_TO_SECURE.add(Secure.VOLUME_LINK_NOTIFICATION);
         }
 
         private static final HashSet<String> MOVED_TO_GLOBAL;
@@ -3128,8 +3113,16 @@ public final class Settings {
          */
         public static final String FONT_SCALE = "font_scale";
 
-        private static final Validator FONT_SCALE_VALIDATOR =
-                new SettingsValidators.InclusiveFloatRangeValidator(0.85f, 1.3f);
+        private static final Validator FONT_SCALE_VALIDATOR = new Validator() {
+            @Override
+            public boolean validate(@Nullable String value) {
+                try {
+                    return Float.parseFloat(value) >= 0;
+                } catch (NumberFormatException | NullPointerException e) {
+                    return false;
+                }
+            }
+        };
 
         /**
          * The serialized system locale value.
@@ -3714,23 +3707,6 @@ public final class Settings {
         public static final String ANIMATOR_DURATION_SCALE = Global.ANIMATOR_DURATION_SCALE;
 
         /**
-         * Control the type of rotation which can be performed using the accelerometer
-         * if ACCELEROMETER_ROTATION is enabled.
-         * Value is a bitwise combination of
-         * 1 = 0 degrees (portrait)
-         * 2 = 90 degrees (left)
-         * 4 = 180 degrees (inverted portrait)
-         * 8 = 270 degrees (right)
-         * Setting to 0 is effectively orientation lock
-         * @hide
-         */
-        public static final String ACCELEROMETER_ROTATION_ANGLES = "accelerometer_rotation_angles";
-
-        /** @hide */
-        public static final Validator ACCELEROMETER_ROTATION_ANGLES_VALIDATOR =
-                NON_NEGATIVE_INTEGER_VALIDATOR;
-
-        /**
          * Control whether the accelerometer will be used to change screen
          * orientation.  If 0, it will not be used unless explicitly requested
          * by the application; if 1, it will be used by default unless explicitly
@@ -4119,15 +4095,6 @@ public final class Settings {
          */
 
         /**
-          * Volume keys control cursor in text fields (default is 0)
-          * 0 - Disabled
-          * 1 - Volume up/down moves cursor left/right
-          * 2 - Volume up/down moves cursor right/left
-          * @hide
-          */
-        public static final String VOLUME_KEY_CURSOR_CONTROL = "volume_key_cursor_control";
-
-        /**
          * Settings to backup. This is here so that it's in the same place as the settings
          * keys and easy to update.
          *
@@ -4185,8 +4152,7 @@ public final class Settings {
             SHOW_BATTERY_PERCENT,
             NOTIFICATION_VIBRATION_INTENSITY,
             HAPTIC_FEEDBACK_INTENSITY,
-            DISPLAY_COLOR_MODE,
-            NOTIFICATION_LIGHT_PULSE,
+            DISPLAY_COLOR_MODE
         };
 
         /**
@@ -4389,9 +4355,6 @@ public final class Settings {
             VALIDATORS.put(WIFI_STATIC_DNS1, WIFI_STATIC_DNS1_VALIDATOR);
             VALIDATORS.put(WIFI_STATIC_DNS2, WIFI_STATIC_DNS2_VALIDATOR);
             VALIDATORS.put(SHOW_BATTERY_PERCENT, SHOW_BATTERY_PERCENT_VALIDATOR);
-            VALIDATORS.put(NOTIFICATION_LIGHT_PULSE, BOOLEAN_VALIDATOR);
-            VALIDATORS.put(ACCELEROMETER_ROTATION_ANGLES,
-                    ACCELEROMETER_ROTATION_ANGLES_VALIDATOR);
         }
 
         /**
@@ -4752,13 +4715,10 @@ public final class Settings {
         private static final HashSet<String> MOVED_TO_LOCK_SETTINGS;
         private static final HashSet<String> MOVED_TO_GLOBAL;
         static {
-            MOVED_TO_LOCK_SETTINGS = new HashSet<>(6);
+            MOVED_TO_LOCK_SETTINGS = new HashSet<>(3);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_ENABLED);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_VISIBLE);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED);
-            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_SIZE);
-            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_DOTS_VISIBLE);
-            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_SHOW_ERROR_PATH);
 
             MOVED_TO_GLOBAL = new HashSet<>();
             MOVED_TO_GLOBAL.add(Settings.Global.ADB_ENABLED);
@@ -5567,18 +5527,6 @@ public final class Settings {
         public static final String DEVICE_PROVISIONED = Global.DEVICE_PROVISIONED;
 
         /**
-         * Indicates whether a DPC has been downloaded during provisioning.
-         *
-         * <p>Type: int (0 for false, 1 for true)
-         *
-         * <p>If this is true, then any attempts to begin setup again should result in factory reset
-         *
-         * @hide
-         */
-        public static final String MANAGED_PROVISIONING_DPC_DOWNLOADED =
-                "managed_provisioning_dpc_downloaded";
-
-        /**
          * Whether the current user has been set up via setup wizard (0 = false, 1 = true)
          * @hide
          */
@@ -5826,24 +5774,6 @@ public final class Settings {
         @Deprecated
         public static final String
                 LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED = "lock_pattern_tactile_feedback_enabled";
-
-        /**
-         * Determines the width and height of the LockPatternView widget
-         * @hide
-         */
-        public static final String LOCK_PATTERN_SIZE = "lock_pattern_size";
-
-        /**
-         * Whether lock pattern will show dots (0 = false, 1 = true)
-         * @hide
-         */
-        public static final String LOCK_DOTS_VISIBLE = "lock_pattern_dotsvisible";
-
-        /**
-         * Whether lockscreen error pattern is visible (0 = false, 1 = true)
-         * @hide
-         */
-        public static final String LOCK_SHOW_ERROR_PATH = "lock_pattern_show_error_path";
 
         /**
          * This preference allows the device to be locked given time after screen goes off,
@@ -7599,6 +7529,9 @@ public final class Settings {
          */
         public static final String ASSIST_GESTURE_SENSITIVITY = "assist_gesture_sensitivity";
 
+        private static final Validator ASSIST_GESTURE_SENSITIVITY_VALIDATOR =
+                new SettingsValidators.InclusiveFloatRangeValidator(0.0f, 1.0f);
+
         /**
          * Whether the assist gesture should silence alerts.
          *
@@ -7627,6 +7560,8 @@ public final class Settings {
          * @hide
          */
         public static final String ASSIST_GESTURE_SETUP_COMPLETE = "assist_gesture_setup_complete";
+
+        private static final Validator ASSIST_GESTURE_SETUP_COMPLETE_VALIDATOR = BOOLEAN_VALIDATOR;
 
         /**
          * Control whether Night display is currently activated.
@@ -7997,14 +7932,6 @@ public final class Settings {
                 "packages_to_clear_data_before_full_restore";
 
         /**
-         * Boolean value whether to link ringtone and notification volume
-         * @hide
-         */
-        public static final String VOLUME_LINK_NOTIFICATION = "volume_link_notification";
-
-        private static final Validator VOLUME_LINK_NOTIFICATION_VALIDATOR = BOOLEAN_VALIDATOR;
-
-        /**
          * This are the settings to be backed up.
          *
          * NOTE: Settings are backed up and restored in the order they appear
@@ -8091,6 +8018,8 @@ public final class Settings {
             NFC_PAYMENT_DEFAULT_COMPONENT,
             AUTOMATIC_STORAGE_MANAGER_DAYS_TO_RETAIN,
             ASSIST_GESTURE_ENABLED,
+            ASSIST_GESTURE_SENSITIVITY,
+            ASSIST_GESTURE_SETUP_COMPLETE,
             ASSIST_GESTURE_SILENCE_ALERTS_ENABLED,
             ASSIST_GESTURE_WAKE_ENABLED,
             VR_DISPLAY_MODE,
@@ -8105,9 +8034,6 @@ public final class Settings {
             VOLUME_HUSH_GESTURE,
             MANUAL_RINGER_TOGGLE_COUNT,
             HUSH_GESTURE_USED,
-            LOCK_SCREEN_ALLOW_PRIVATE_NOTIFICATIONS,
-            LOCK_SCREEN_SHOW_NOTIFICATIONS,
-            VOLUME_LINK_NOTIFICATION,
         };
 
         /**
@@ -8232,6 +8158,8 @@ public final class Settings {
             VALIDATORS.put(AUTOMATIC_STORAGE_MANAGER_DAYS_TO_RETAIN,
                     AUTOMATIC_STORAGE_MANAGER_DAYS_TO_RETAIN_VALIDATOR);
             VALIDATORS.put(ASSIST_GESTURE_ENABLED, ASSIST_GESTURE_ENABLED_VALIDATOR);
+            VALIDATORS.put(ASSIST_GESTURE_SENSITIVITY, ASSIST_GESTURE_SENSITIVITY_VALIDATOR);
+            VALIDATORS.put(ASSIST_GESTURE_SETUP_COMPLETE, ASSIST_GESTURE_SETUP_COMPLETE_VALIDATOR);
             VALIDATORS.put(ASSIST_GESTURE_SILENCE_ALERTS_ENABLED,
                     ASSIST_GESTURE_SILENCE_ALERTS_ENABLED_VALIDATOR);
             VALIDATORS.put(ASSIST_GESTURE_WAKE_ENABLED, ASSIST_GESTURE_WAKE_ENABLED_VALIDATOR);
@@ -8254,9 +8182,6 @@ public final class Settings {
                     ENABLED_NOTIFICATION_POLICY_ACCESS_PACKAGES_VALIDATOR); //legacy restore setting
             VALIDATORS.put(HUSH_GESTURE_USED, HUSH_GESTURE_USED_VALIDATOR);
             VALIDATORS.put(MANUAL_RINGER_TOGGLE_COUNT, MANUAL_RINGER_TOGGLE_COUNT_VALIDATOR);
-            VALIDATORS.put(LOCK_SCREEN_ALLOW_PRIVATE_NOTIFICATIONS, BOOLEAN_VALIDATOR);
-            VALIDATORS.put(LOCK_SCREEN_SHOW_NOTIFICATIONS, BOOLEAN_VALIDATOR);
-            VALIDATORS.put(VOLUME_LINK_NOTIFICATION, VOLUME_LINK_NOTIFICATION_VALIDATOR);
         }
 
         /**
@@ -9022,6 +8947,15 @@ public final class Settings {
         */
         public static final String HDMI_SYSTEM_AUDIO_CONTROL_ENABLED =
                 "hdmi_system_audio_control_enabled";
+
+        /**
+         * Whether HDMI System Audio Status is enabled. If enabled, audio stream will
+         * be played on AVR instead of TV spaeker  if there's a connected CEC-enabled AV Receiver.
+         * If disabled, the system audio mode will never be activated.
+         * @hide
+         */
+         public static final String HDMI_SYSTEM_AUDIO_STATUS_ENABLED =
+                 "hdmi_system_audio_status_enabled";
 
         /**
          * Whether TV will automatically turn on upon reception of the CEC command
@@ -10594,15 +10528,6 @@ public final class Settings {
         public static final String ACTIVITY_MANAGER_CONSTANTS = "activity_manager_constants";
 
         /**
-         * Feature flag to enable or disable the activity starts logging feature.
-         * Type: int (0 for false, 1 for true)
-         * Default: 0
-         * @hide
-         */
-        public static final String ACTIVITY_STARTS_LOGGING_ENABLED
-                = "activity_starts_logging_enabled";
-
-        /**
          * App ops specific settings.
          * This is encoded as a key=value list, separated by commas. Ex:
          *
@@ -11671,7 +11596,7 @@ public final class Settings {
         /**
          * Defines global runtime overrides to window policy.
          *
-         * See {@link android.view.WindowManagerPolicyControl} for value format.
+         * See {@link com.android.server.policy.PolicyControl} for value format.
          *
          * @hide
          */
@@ -11693,15 +11618,6 @@ public final class Settings {
          * @hide
          */
         public static final String BLOCKED_SLICES = "blocked_slices";
-
-        /**
-         * Defines global runtime overrides to window policy style.
-         *
-         * See {@link android.view.WindowManagerPolicyControl} for value definitions.
-         *
-         * @hide
-         */
-        public static final String POLICY_CONTROL_STYLE = "policy_control_style";
 
         /**
          * Defines global zen mode.  ZEN_MODE_OFF, ZEN_MODE_IMPORTANT_INTERRUPTIONS,
@@ -12870,7 +12786,6 @@ public final class Settings {
          * Supported keys:
          * compatibility_wal_supported      (boolean)
          * wal_syncmode       (String)
-         * truncate_size      (int)
          *
          * @hide
          */

@@ -27,14 +27,12 @@ import static com.android.internal.R.array.config_tether_dhcp_range;
 import static com.android.internal.R.array.config_tether_usb_regexs;
 import static com.android.internal.R.array.config_tether_upstream_types;
 import static com.android.internal.R.array.config_tether_wifi_regexs;
-import static com.android.internal.R.bool.config_tether_upstream_automatic;
 import static com.android.internal.R.string.config_mobile_hotspot_provision_app_no_ui;
 
 import android.content.Context;
 import android.content.res.Resources;
 import android.net.ConnectivityManager;
 import android.net.util.SharedLog;
-import android.os.SystemProperties;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 
@@ -88,7 +86,6 @@ public class TetheringConfiguration {
     public final String[] tetherableBluetoothRegexs;
     public final int dunCheck;
     public final boolean isDunRequired;
-    public final boolean chooseUpstreamAutomatically;
     public final Collection<Integer> preferredUpstreamIfaceTypes;
     public final String[] dhcpRanges;
     public final String[] defaultIPv4DNS;
@@ -109,7 +106,6 @@ public class TetheringConfiguration {
         dunCheck = checkDunRequired(ctx);
         configLog.log("DUN check returned: " + dunCheckString(dunCheck));
 
-        chooseUpstreamAutomatically = getResourceBoolean(ctx, config_tether_upstream_automatic);
         preferredUpstreamIfaceTypes = getUpstreamIfaceTypes(ctx, dunCheck);
         isDunRequired = preferredUpstreamIfaceTypes.contains(TYPE_MOBILE_DUN);
 
@@ -146,8 +142,6 @@ public class TetheringConfiguration {
         pw.print("isDunRequired: ");
         pw.println(isDunRequired);
 
-        pw.print("chooseUpstreamAutomatically: ");
-        pw.println(chooseUpstreamAutomatically);
         dumpStringArray(pw, "preferredUpstreamIfaceTypes",
                 preferredUpstreamNames(preferredUpstreamIfaceTypes));
 
@@ -166,7 +160,6 @@ public class TetheringConfiguration {
         sj.add(String.format("tetherableBluetoothRegexs:%s",
                 makeString(tetherableBluetoothRegexs)));
         sj.add(String.format("isDunRequired:%s", isDunRequired));
-        sj.add(String.format("chooseUpstreamAutomatically:%s", chooseUpstreamAutomatically));
         sj.add(String.format("preferredUpstreamIfaceTypes:%s",
                 makeString(preferredUpstreamNames(preferredUpstreamIfaceTypes))));
         sj.add(String.format("provisioningApp:%s", makeString(provisioningApp)));
@@ -212,11 +205,6 @@ public class TetheringConfiguration {
     }
 
     public static int checkDunRequired(Context ctx) {
-        // Allow override via prop
-        final int dunProp = SystemProperties.getInt("persist.sys.dun.override", -1);
-        if (dunProp >= 0) {
-            return dunProp;
-        }
         final TelephonyManager tm = (TelephonyManager) ctx.getSystemService(TELEPHONY_SERVICE);
         return (tm != null) ? tm.getTetherApnRequired() : DUN_UNSPECIFIED;
     }
@@ -295,14 +283,6 @@ public class TetheringConfiguration {
             return ctx.getResources().getString(config_mobile_hotspot_provision_app_no_ui);
         } catch (Resources.NotFoundException e) {
             return "";
-        }
-    }
-
-    private static boolean getResourceBoolean(Context ctx, int resId) {
-        try {
-            return ctx.getResources().getBoolean(resId);
-        } catch (Resources.NotFoundException e404) {
-            return false;
         }
     }
 

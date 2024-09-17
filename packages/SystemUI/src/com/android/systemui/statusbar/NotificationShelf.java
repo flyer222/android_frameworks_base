@@ -151,11 +151,12 @@ public class NotificationShelf extends ActivatableNotificationView implements
     }
 
     public void fadeInTranslating() {
-        mShelfIcons.setTranslationY(-mShelfAppearTranslation);
+        float translation = mShelfIcons.getTranslationY();
+        mShelfIcons.setTranslationY(translation - mShelfAppearTranslation);
         mShelfIcons.setAlpha(0);
         mShelfIcons.animate()
                 .setInterpolator(Interpolators.DECELERATE_QUINT)
-                .translationY(0)
+                .translationY(translation)
                 .setDuration(SHELF_IN_TRANSLATION_DURATION)
                 .start();
         mShelfIcons.animate()

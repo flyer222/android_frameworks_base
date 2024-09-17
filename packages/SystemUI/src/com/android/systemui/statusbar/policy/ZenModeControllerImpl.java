@@ -113,6 +113,10 @@ public class ZenModeControllerImpl extends CurrentUserTracker implements ZenMode
 
     @Override
     public void addCallback(Callback callback) {
+        if (callback == null) {
+            Slog.e(TAG, "Attempted to add a null callback.");
+            return;
+        }
         mCallbacks.add(callback);
     }
 
@@ -129,12 +133,6 @@ public class ZenModeControllerImpl extends CurrentUserTracker implements ZenMode
     @Override
     public void setZen(int zen, Uri conditionId, String reason) {
         mNoMan.setZenMode(zen, conditionId, reason);
-    }
-
-    @Override
-    public boolean areAlarmsAllowedInPriority() {
-        return (mNoMan.getNotificationPolicy().priorityCategories
-                & NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS) != 0;
     }
 
     @Override

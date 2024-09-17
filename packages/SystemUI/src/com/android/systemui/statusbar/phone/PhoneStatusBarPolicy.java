@@ -31,7 +31,6 @@ import android.app.Notification.Action;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.SynchronousUserSwitchObserver;
-import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -60,7 +59,6 @@ import android.util.Pair;
 import com.android.internal.messages.nano.SystemMessageProto.SystemMessage;
 import com.android.internal.telephony.IccCardConstants;
 import com.android.internal.telephony.TelephonyIntents;
-import com.android.settingslib.bluetooth.CachedBluetoothDevice;
 import com.android.systemui.Dependency;
 import com.android.systemui.DockedStackExistsListener;
 import com.android.systemui.R;
@@ -87,7 +85,6 @@ import com.android.systemui.statusbar.policy.LocationController.LocationChangeCa
 import com.android.systemui.statusbar.policy.NextAlarmController;
 import com.android.systemui.statusbar.policy.RotationLockController;
 import com.android.systemui.statusbar.policy.RotationLockController.RotationLockControllerCallback;
-import com.android.systemui.statusbar.policy.SuController;
 import com.android.systemui.statusbar.policy.UserInfoController;
 import com.android.systemui.statusbar.policy.ZenModeController;
 import com.android.systemui.util.NotificationChannels;
@@ -121,7 +118,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
     private final String mSlotHeadset;
     private final String mSlotDataSaver;
     private final String mSlotLocation;
-    private final String mSlotSu;
 
     private final Context mContext;
     private final Handler mHandler = new Handler();
@@ -140,7 +136,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
     private final LocationController mLocationController;
     private final ArraySet<Pair<String, Integer>> mCurrentNotifs = new ArraySet<>();
     private final UiOffloadThread mUiOffloadThread = Dependency.get(UiOffloadThread.class);
-    private final SuController mSuController;
 
     // Assume it's all good unless we hear otherwise.  We don't always seem
     // to get broadcasts that it *is* there.
@@ -172,7 +167,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         mProvisionedController = Dependency.get(DeviceProvisionedController.class);
         mKeyguardMonitor = Dependency.get(KeyguardMonitor.class);
         mLocationController = Dependency.get(LocationController.class);
-        mSuController = Dependency.get(SuController.class);
 
         mSlotCast = context.getString(com.android.internal.R.string.status_bar_cast);
         mSlotHotspot = context.getString(com.android.internal.R.string.status_bar_hotspot);
@@ -187,14 +181,12 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         mSlotHeadset = context.getString(com.android.internal.R.string.status_bar_headset);
         mSlotDataSaver = context.getString(com.android.internal.R.string.status_bar_data_saver);
         mSlotLocation = context.getString(com.android.internal.R.string.status_bar_location);
-        mSlotSu = context.getString(com.android.internal.R.string.status_bar_su);
 
         // listen for broadcasts
         IntentFilter filter = new IntentFilter();
         filter.addAction(AudioManager.RINGER_MODE_CHANGED_ACTION);
         filter.addAction(AudioManager.INTERNAL_RINGER_MODE_CHANGED_ACTION);
         filter.addAction(AudioManager.ACTION_HEADSET_PLUG);
-        filter.addAction(BluetoothDevice.ACTION_BATTERY_LEVEL_CHANGED);
         filter.addAction(TelephonyIntents.ACTION_SIM_STATE_CHANGED);
         filter.addAction(TelecomManager.ACTION_CURRENT_TTY_MODE_CHANGED);
         filter.addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE);
@@ -237,10 +229,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
                 mContext.getString(R.string.accessibility_status_bar_hotspot));
         mIconController.setIconVisibility(mSlotHotspot, mHotspot.isHotspotEnabled());
 
-        // su
-        mIconController.setIcon(mSlotSu, R.drawable.stat_sys_su, null);
-        mIconController.setIconVisibility(mSlotSu, mSuController.getSessionCount() > 0);
-
         // managed profile
         mIconController.setIcon(mSlotManagedProfile, R.drawable.stat_sys_managed_profile_status,
                 mContext.getString(R.string.accessibility_managed_profile));
@@ -257,7 +245,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         mZenController.addCallback(this);
         mCast.addCallback(mCastCallback);
         mHotspot.addCallback(mHotspotCallback);
-        mSuController.addCallback(mSuCallback);
         mNextAlarmController.addCallback(mNextAlarmCallback);
         mDataSaver.addCallback(this);
         mKeyguardMonitor.addCallback(this);
@@ -286,7 +273,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         mZenController.removeCallback(this);
         mCast.removeCallback(mCastCallback);
         mHotspot.removeCallback(mHotspotCallback);
-        mSuController.removeCallback(mSuCallback);
         mNextAlarmController.removeCallback(mNextAlarmCallback);
         mDataSaver.removeCallback(this);
         mKeyguardMonitor.removeCallback(this);
@@ -451,32 +437,7 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         boolean bluetoothVisible = false;
         if (mBluetooth != null) {
             if (mBluetooth.isBluetoothConnected()) {
-                List<CachedBluetoothDevice> connectedDevices = mBluetooth.getConnectedDevices();
-                int batteryLevel = connectedDevices.isEmpty() ?
-                        -1 : connectedDevices.get(0).getBatteryLevel();
-                if (batteryLevel == 100) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_9;
-                } else if (batteryLevel >= 90) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_8;
-                } else if (batteryLevel >= 80) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_7;
-                } else if (batteryLevel >= 70) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_6;
-                } else if (batteryLevel >= 60) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_5;
-                } else if (batteryLevel >= 50) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_4;
-                } else if (batteryLevel >= 40) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_3;
-                } else if (batteryLevel >= 30) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_2;
-                } else if (batteryLevel >= 20) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_1;
-                } else if (batteryLevel >= 10) {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected_battery_0;
-                } else {
-                    iconId = R.drawable.stat_sys_data_bluetooth_connected;
-                }
+                iconId = R.drawable.stat_sys_data_bluetooth_connected;
                 contentDescription = mContext.getString(R.string.accessibility_bluetooth_connected);
                 bluetoothVisible = mBluetooth.isBluetoothEnabled();
             }
@@ -635,8 +596,7 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         String message = mContext.getString(R.string.instant_apps_message);
         PendingIntent appInfoAction = PendingIntent.getActivity(mContext, 0,
                 new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                        .setData(Uri.fromParts("package", pkg, null)),
-                        PendingIntent.FLAG_IMMUTABLE);
+                        .setData(Uri.fromParts("package", pkg, null)), 0);
         Action action = new Notification.Action.Builder(null, mContext.getString(R.string.app_info),
                 appInfoAction).build();
 
@@ -650,7 +610,7 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
             PendingIntent pendingIntent = PendingIntent.getActivity(mContext,
-                    0 /* requestCode */, browserIntent, PendingIntent.FLAG_IMMUTABLE);
+                    0 /* requestCode */, browserIntent, 0 /* flags */);
             ComponentName aiaComponent = null;
             try {
                 aiaComponent = AppGlobals.getPackageManager().getInstantAppInstallerComponent();
@@ -668,8 +628,7 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
                     .putExtra(Intent.EXTRA_EPHEMERAL_FAILURE, pendingIntent)
                     .putExtra(Intent.EXTRA_INSTANT_APP_FAILURE, pendingIntent);
 
-            PendingIntent webPendingIntent = PendingIntent.getActivity(
-                    mContext, 0, goToWebIntent, PendingIntent.FLAG_IMMUTABLE);
+            PendingIntent webPendingIntent = PendingIntent.getActivity(mContext, 0, goToWebIntent, 0);
             Action webAction = new Notification.Action.Builder(null, mContext.getString(R.string.go_to_web),
                     webPendingIntent).build();
             builder.addAction(webAction);
@@ -736,14 +695,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
         @Override
         public void onHotspotChanged(boolean enabled, int numDevices) {
             mIconController.setIconVisibility(mSlotHotspot, enabled);
-        }
-    };
-
-
-    private final SuController.Callback mSuCallback = new SuController.Callback() {
-        @Override
-        public void onSuSessionsChanged(int sessionCount) {
-            mIconController.setIconVisibility(mSlotSu, sessionCount > 0);
         }
     };
 
@@ -863,9 +814,6 @@ public class PhoneStatusBarPolicy implements Callback, Callbacks,
                     break;
                 case AudioManager.ACTION_HEADSET_PLUG:
                     updateHeadsetPlug(intent);
-                    break;
-                case BluetoothDevice.ACTION_BATTERY_LEVEL_CHANGED:
-                    updateBluetooth();
                     break;
             }
         }

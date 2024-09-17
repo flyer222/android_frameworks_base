@@ -58,7 +58,6 @@ import static com.android.mediaframeworktest.helpers.CameraTestUtils.SIZE_BOUND_
 import static com.android.mediaframeworktest.helpers.CameraTestUtils.SimpleCaptureCallback;
 import static com.android.mediaframeworktest.helpers.CameraTestUtils.SimpleImageReaderListener;
 import static com.android.mediaframeworktest.helpers.CameraTestUtils.configureCameraSession;
-import static com.android.mediaframeworktest.helpers.CameraTestUtils.configureCameraSessionWithParameters;
 import static com.android.mediaframeworktest.helpers.CameraTestUtils.getSupportedVideoSizes;
 import static com.android.mediaframeworktest.helpers.CameraTestUtils.getValueNotNull;
 
@@ -873,6 +872,7 @@ public class Camera2RecordingTest extends Camera2SurfaceViewTestCase {
             outputSurfaces.add(mReaderSurface);
         }
         mSessionListener = new BlockingSessionCallback();
+        mSession = configureCameraSession(mCamera, outputSurfaces, mSessionListener, mHandler);
 
         CaptureRequest.Builder recordingRequestBuilder =
                 mCamera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
@@ -885,10 +885,7 @@ public class Camera2RecordingTest extends Camera2SurfaceViewTestCase {
         }
         recordingRequestBuilder.addTarget(mRecordingSurface);
         recordingRequestBuilder.addTarget(mPreviewSurface);
-        CaptureRequest recordingRequest = recordingRequestBuilder.build();
-        mSession = configureCameraSessionWithParameters(mCamera, outputSurfaces, mSessionListener,
-                mHandler, recordingRequest);
-        mSession.setRepeatingRequest(recordingRequest, listener, mHandler);
+        mSession.setRepeatingRequest(recordingRequestBuilder.build(), listener, mHandler);
 
         if (useMediaRecorder) {
             mMediaRecorder.start();

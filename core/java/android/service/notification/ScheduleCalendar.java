@@ -70,10 +70,10 @@ public class ScheduleCalendar {
             }
             // only allow alarms in the future
             if (nextAlarm > now) {
-                if (mSchedule.nextAlarm == 0 || mSchedule.nextAlarm < now) {
+                // store earliest alarm
+                if (mSchedule.nextAlarm == 0) {
                     mSchedule.nextAlarm = nextAlarm;
                 } else {
-                    // store earliest alarm
                     mSchedule.nextAlarm = Math.min(mSchedule.nextAlarm, nextAlarm);
                 }
             } else if (mSchedule.nextAlarm < now) {

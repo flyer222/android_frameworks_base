@@ -33,6 +33,7 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.ServiceManager.ServiceNotFoundException;
+import android.os.UserHandle;
 import android.provider.Settings;
 import android.service.persistentdata.IPersistentDataBlockService;
 import android.util.Log;
@@ -556,7 +557,7 @@ public class KeyguardManager {
      * This will, if the keyguard is secure, bring up the unlock screen of
      * the keyguard.
      *
-     * @param callback Lets you know whether the operation was successful and
+     * @param callback Let's you know whether the operation was succesful and
      *   it is safe to launch anything that would normally be considered safe
      *   once the user has gotten past the keyguard.
      */

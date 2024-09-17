@@ -1,7 +1,4 @@
 /*
- * Copyright (c) 2014, The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
  * Copyright (C) 2008 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,7 +30,6 @@ import android.annotation.SystemService;
 import android.annotation.TestApi;
 import android.annotation.WorkerThread;
 import android.app.ActivityThread;
-import android.app.AppOpsManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -339,18 +335,11 @@ public class TelephonyManager {
      * <p>
      * The {@link #EXTRA_STATE} extra indicates the new call state.
      * If a receiving app has {@link android.Manifest.permission#READ_CALL_LOG} permission, a second
-     * extra {@link #EXTRA_INCOMING_NUMBER} provides the phone number for incoming and outgoing
-     * calls as a String.
-     * <p>
-     * If the receiving app has
+     * extra {@link #EXTRA_INCOMING_NUMBER} provides the phone number for incoming and outoing calls
+     * as a String.  Note: If the receiving app has
      * {@link android.Manifest.permission#READ_CALL_LOG} and
      * {@link android.Manifest.permission#READ_PHONE_STATE} permission, it will receive the
-     * broadcast twice; one with the {@link #EXTRA_INCOMING_NUMBER} populated with the phone number,
-     * and another with it blank.  Due to the nature of broadcasts, you cannot assume the order
-     * in which these broadcasts will arrive, however you are guaranteed to receive two in this
-     * case.  Apps which are interested in the {@link #EXTRA_INCOMING_NUMBER} can ignore the
-     * broadcasts where {@link #EXTRA_INCOMING_NUMBER} is not present in the extras (e.g. where
-     * {@link Intent#hasExtra(String)} returns {@code false}).
+     * broadcast twice; one with the phone number and another without it.
      * <p class="note">
      * This was a {@link android.content.Context#sendStickyBroadcast sticky}
      * broadcast in version 1.0, but it is no longer sticky.
@@ -499,19 +488,10 @@ public class TelephonyManager {
     public static final String EXTRA_STATE_OFFHOOK = PhoneConstants.State.OFFHOOK.toString();
 
     /**
-     * Extra key used with the {@link #ACTION_PHONE_STATE_CHANGED} broadcast
-     * for a String containing the incoming or outgoing phone number.
-     * <p>
-     * This extra is only populated for receivers of the {@link #ACTION_PHONE_STATE_CHANGED}
-     * broadcast which have been granted the {@link android.Manifest.permission#READ_CALL_LOG} and
-     * {@link android.Manifest.permission#READ_PHONE_STATE} permissions.
-     * <p>
-     * For incoming calls, the phone number is only guaranteed to be populated when the
-     * {@link #EXTRA_STATE} changes from {@link #EXTRA_STATE_IDLE} to {@link #EXTRA_STATE_RINGING}.
-     * If the incoming caller is from an unknown number, the extra will be populated with an empty
-     * string.
-     * For outgoing calls, the phone number is only guaranteed to be populated when the
-     * {@link #EXTRA_STATE} changes from {@link #EXTRA_STATE_IDLE} to {@link #EXTRA_STATE_OFFHOOK}.
+     * The lookup key used with the {@link #ACTION_PHONE_STATE_CHANGED} broadcast
+     * for a String containing the incoming phone number.
+     * Only valid when the new call state is RINGING.
+     *
      * <p class="note">
      * Retrieve with
      * {@link android.content.Intent#getStringExtra(String)}.
@@ -5150,7 +5130,7 @@ public class TelephonyManager {
         // FIXME Need to get it from Telephony Dev Controller when that gets implemented!
         // and then this method shouldn't be used at all!
         if(isMultiSimEnabled()) {
-            return getPhoneCount();
+            return 2;
         } else {
             return 1;
         }
@@ -5453,6 +5433,23 @@ public class TelephonyManager {
             Rlog.e(TAG, "getImsRegistration, RemoteException: " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * @return true if the IMS resolver is busy resolving a binding and should not be considered
+     * available, false if the IMS resolver is idle.
+     * @hide
+     */
+    public boolean isResolvingImsBinding() {
+        try {
+            ITelephony telephony = getITelephony();
+            if (telephony != null) {
+                return telephony.isResolvingImsBinding();
+            }
+        } catch (RemoteException e) {
+            Rlog.e(TAG, "isResolvingImsBinding, RemoteException: " + e.getMessage());
+        }
+        return false;
     }
 
     /**
@@ -6440,14 +6437,6 @@ public class TelephonyManager {
     public void setDataEnabled(int subId, boolean enable) {
         try {
             Log.d(TAG, "setDataEnabled: enabled=" + enable);
-            AppOpsManager appOps = mContext.getSystemService(AppOpsManager.class);
-            if (enable) {
-                if (appOps.noteOp(AppOpsManager.OP_DATA_CONNECT_CHANGE)
-                        != AppOpsManager.MODE_ALLOWED) {
-                    Log.w(TAG, "Permission denied by user.");
-                    return;
-                }
-            }
             ITelephony telephony = getITelephony();
             if (telephony != null)
                 telephony.setUserDataEnabled(subId, enable);
@@ -7593,9 +7582,6 @@ public class TelephonyManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.MODIFY_PHONE_STATE)
     public int setAllowedCarriers(int slotIndex, List<CarrierIdentifier> carriers) {
-        if (!SubscriptionManager.isValidPhoneId(slotIndex)) {
-            return -1;
-        }
         try {
             ITelephony service = getITelephony();
             if (service != null) {
@@ -7623,17 +7609,15 @@ public class TelephonyManager {
     @SystemApi
     @RequiresPermission(android.Manifest.permission.READ_PRIVILEGED_PHONE_STATE)
     public List<CarrierIdentifier> getAllowedCarriers(int slotIndex) {
-        if (SubscriptionManager.isValidPhoneId(slotIndex)) {
-            try {
-                ITelephony service = getITelephony();
-                if (service != null) {
-                    return service.getAllowedCarriers(slotIndex);
-                }
-            } catch (RemoteException e) {
-                Log.e(TAG, "Error calling ITelephony#getAllowedCarriers", e);
-            } catch (NullPointerException e) {
-                Log.e(TAG, "Error calling ITelephony#getAllowedCarriers", e);
+        try {
+            ITelephony service = getITelephony();
+            if (service != null) {
+                return service.getAllowedCarriers(slotIndex);
             }
+        } catch (RemoteException e) {
+            Log.e(TAG, "Error calling ITelephony#getAllowedCarriers", e);
+        } catch (NullPointerException e) {
+            Log.e(TAG, "Error calling ITelephony#getAllowedCarriers", e);
         }
         return new ArrayList<CarrierIdentifier>(0);
     }
@@ -7690,23 +7674,6 @@ public class TelephonyManager {
             }
         } catch (RemoteException e) {
             Log.e(TAG, "Error calling ITelephony#carrierActionReportDefaultNetworkStatus", e);
-        }
-    }
-
-    /**
-     * Action set from carrier signalling broadcast receivers to reset all carrier actions
-     * Permissions android.Manifest.permission.MODIFY_PHONE_STATE is required
-     * @param subId the subscription ID that this action applies to.
-     * @hide
-     */
-    public void carrierActionResetAll(int subId) {
-        try {
-            ITelephony service = getITelephony();
-            if (service != null) {
-                service.carrierActionResetAll(subId);
-            }
-        } catch (RemoteException e) {
-            Log.e(TAG, "Error calling ITelephony#carrierActionResetAll", e);
         }
     }
 

@@ -17,8 +17,6 @@
 package com.android.systemui.shared.recents;
 
 import android.graphics.Rect;
-import android.view.MotionEvent;
-
 import com.android.systemui.shared.system.GraphicBufferCompat;
 
 /**
@@ -62,9 +60,4 @@ interface ISystemUiProxy {
      * needed from current value
      */
     void setBackButtonAlpha(float alpha, boolean animate) = 8;
-
-    /**
-     * Notifies SystemUI that StatusBar is moving.
-     */
-    void onStatusBarMotionEvent(in MotionEvent event) = 9;
 }

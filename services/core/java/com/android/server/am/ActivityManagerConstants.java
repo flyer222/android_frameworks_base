@@ -20,8 +20,6 @@ import android.content.ContentResolver;
 import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Handler;
-import android.os.Process;
-import android.os.SystemProperties;
 import android.provider.Settings;
 import android.util.KeyValueListParser;
 import android.util.Slog;
@@ -69,10 +67,8 @@ final class ActivityManagerConstants extends ContentObserver {
     static final String KEY_BOUND_SERVICE_CRASH_RESTART_DURATION = "service_crash_restart_duration";
     static final String KEY_BOUND_SERVICE_CRASH_MAX_RETRY = "service_crash_max_retry";
     static final String KEY_PROCESS_START_ASYNC = "process_start_async";
-    static final String KEY_TOP_TO_FGS_GRACE_DURATION = "top_to_fgs_grace_duration";
 
-    private static final int DEFAULT_MAX_CACHED_PROCESSES =
-            SystemProperties.getInt("ro.vendor.qti.sys.fw.bg_apps_limit", 32);
+    private static final int DEFAULT_MAX_CACHED_PROCESSES = 32;
     private static final long DEFAULT_BACKGROUND_SETTLE_TIME = 60*1000;
     private static final long DEFAULT_FGSERVICE_MIN_SHOWN_TIME = 2*1000;
     private static final long DEFAULT_FGSERVICE_MIN_REPORT_TIME = 3*1000;
@@ -99,7 +95,7 @@ final class ActivityManagerConstants extends ContentObserver {
     private static final long DEFAULT_BOUND_SERVICE_CRASH_RESTART_DURATION = 30*60_000;
     private static final int DEFAULT_BOUND_SERVICE_CRASH_MAX_RETRY = 16;
     private static final boolean DEFAULT_PROCESS_START_ASYNC = true;
-    private static final long DEFAULT_TOP_TO_FGS_GRACE_DURATION = 15 * 1000;
+
 
     // Maximum number of cached processes we will allow.
     public int MAX_CACHED_PROCESSES = DEFAULT_MAX_CACHED_PROCESSES;
@@ -211,14 +207,6 @@ final class ActivityManagerConstants extends ContentObserver {
     // Indicates if the processes need to be started asynchronously.
     public boolean FLAG_PROCESS_START_ASYNC = DEFAULT_PROCESS_START_ASYNC;
 
-    // Allow app just moving from TOP to FOREGROUND_SERVICE to stay in a higher adj value for
-    // this long.
-    public long TOP_TO_FGS_GRACE_DURATION = DEFAULT_TOP_TO_FGS_GRACE_DURATION;
-
-    // Indicates whether the activity starts logging is enabled.
-    // Controlled by Settings.Global.ACTIVITY_STARTS_LOGGING_ENABLED
-    boolean mFlagActivityStartsLoggingEnabled;
-
     private final ActivityManagerService mService;
     private ContentResolver mResolver;
     private final KeyValueListParser mParser = new KeyValueListParser(',');
@@ -236,17 +224,6 @@ final class ActivityManagerConstants extends ContentObserver {
     // process limit.
     public int CUR_MAX_CACHED_PROCESSES;
 
-    static final boolean USE_TRIM_SETTINGS =
-            SystemProperties.getBoolean("ro.vendor.qti.sys.fw.use_trim_settings", true);
-    static final int EMPTY_APP_PERCENT =
-            SystemProperties.getInt("ro.vendor.qti.sys.fw.empty_app_percent", 50);
-    static final int TRIM_EMPTY_PERCENT =
-            SystemProperties.getInt("ro.vendor.qti.sys.fw.trim_empty_percent", 100);
-    static final int TRIM_CACHE_PERCENT =
-            SystemProperties.getInt("ro.vendor.qti.sys.fw.trim_cache_percent", 100);
-    static final long TRIM_ENABLE_MEMORY =
-            SystemProperties.getLong("ro.vendor.qti.sys.fw.trim_enable_memory",1073741824);
-
     // The maximum number of empty app processes we will let sit around.
     public int CUR_MAX_EMPTY_PROCESSES;
 
@@ -258,12 +235,6 @@ final class ActivityManagerConstants extends ContentObserver {
     // memory trimming.
     public int CUR_TRIM_CACHED_PROCESSES;
 
-    private static final Uri ACTIVITY_MANAGER_CONSTANTS_URI = Settings.Global.getUriFor(
-                Settings.Global.ACTIVITY_MANAGER_CONSTANTS);
-
-    private static final Uri ACTIVITY_STARTS_LOGGING_ENABLED_URI = Settings.Global.getUriFor(
-                Settings.Global.ACTIVITY_STARTS_LOGGING_ENABLED);
-
     public ActivityManagerConstants(ActivityManagerService service, Handler handler) {
         super(handler);
         mService = service;
@@ -272,10 +243,9 @@ final class ActivityManagerConstants extends ContentObserver {
 
     public void start(ContentResolver resolver) {
         mResolver = resolver;
-        mResolver.registerContentObserver(ACTIVITY_MANAGER_CONSTANTS_URI, false, this);
-        mResolver.registerContentObserver(ACTIVITY_STARTS_LOGGING_ENABLED_URI, false, this);
+        mResolver.registerContentObserver(Settings.Global.getUriFor(
+                Settings.Global.ACTIVITY_MANAGER_CONSTANTS), false, this);
         updateConstants();
-        updateActivityStartsLoggingEnabled();
     }
 
     public void setOverrideMaxCachedProcesses(int value) {
@@ -288,21 +258,12 @@ final class ActivityManagerConstants extends ContentObserver {
     }
 
     public static int computeEmptyProcessLimit(int totalProcessLimit) {
-        if (USE_TRIM_SETTINGS && allowTrim()) {
-            return totalProcessLimit * EMPTY_APP_PERCENT / 100;
-        } else {
-            return totalProcessLimit / 2;
-        }
+        return totalProcessLimit/2;
     }
 
     @Override
     public void onChange(boolean selfChange, Uri uri) {
-        if (uri == null) return;
-        if (ACTIVITY_MANAGER_CONSTANTS_URI.equals(uri)) {
-            updateConstants();
-        } else if (ACTIVITY_STARTS_LOGGING_ENABLED_URI.equals(uri)) {
-            updateActivityStartsLoggingEnabled();
-        }
+        updateConstants();
     }
 
     private void updateConstants() {
@@ -371,16 +332,9 @@ final class ActivityManagerConstants extends ContentObserver {
                 DEFAULT_BOUND_SERVICE_CRASH_MAX_RETRY);
             FLAG_PROCESS_START_ASYNC = mParser.getBoolean(KEY_PROCESS_START_ASYNC,
                     DEFAULT_PROCESS_START_ASYNC);
-            TOP_TO_FGS_GRACE_DURATION = mParser.getDurationMillis(KEY_TOP_TO_FGS_GRACE_DURATION,
-                    DEFAULT_TOP_TO_FGS_GRACE_DURATION);
 
             updateMaxCachedProcesses();
         }
-    }
-
-    private void updateActivityStartsLoggingEnabled() {
-        mFlagActivityStartsLoggingEnabled = Settings.Global.getInt(mResolver,
-                Settings.Global.ACTIVITY_STARTS_LOGGING_ENABLED, 0) == 1;
     }
 
     private void updateMaxCachedProcesses() {
@@ -392,9 +346,8 @@ final class ActivityManagerConstants extends ContentObserver {
         // to consider the same level the point where we do trimming regardless of any
         // additional enforced limit.
         final int rawMaxEmptyProcesses = computeEmptyProcessLimit(MAX_CACHED_PROCESSES);
-        CUR_TRIM_EMPTY_PROCESSES = computeTrimEmptyApps(rawMaxEmptyProcesses);
-        CUR_TRIM_CACHED_PROCESSES = computeTrimCachedApps(
-                rawMaxEmptyProcesses, MAX_CACHED_PROCESSES);
+        CUR_TRIM_EMPTY_PROCESSES = rawMaxEmptyProcesses/2;
+        CUR_TRIM_CACHED_PROCESSES = (MAX_CACHED_PROCESSES-rawMaxEmptyProcesses)/3;
     }
 
     void dump(PrintWriter pw) {
@@ -449,8 +402,6 @@ final class ActivityManagerConstants extends ContentObserver {
         pw.println(MAX_SERVICE_INACTIVITY);
         pw.print("  "); pw.print(KEY_BG_START_TIMEOUT); pw.print("=");
         pw.println(BG_START_TIMEOUT);
-        pw.print("  "); pw.print(KEY_TOP_TO_FGS_GRACE_DURATION); pw.print("=");
-        pw.println(TOP_TO_FGS_GRACE_DURATION);
 
         pw.println();
         if (mOverrideMaxCachedProcesses >= 0) {
@@ -460,25 +411,5 @@ final class ActivityManagerConstants extends ContentObserver {
         pw.print("  CUR_MAX_EMPTY_PROCESSES="); pw.println(CUR_MAX_EMPTY_PROCESSES);
         pw.print("  CUR_TRIM_EMPTY_PROCESSES="); pw.println(CUR_TRIM_EMPTY_PROCESSES);
         pw.print("  CUR_TRIM_CACHED_PROCESSES="); pw.println(CUR_TRIM_CACHED_PROCESSES);
-    }
-
-    private static boolean allowTrim() {
-        return Process.getTotalMemory() < TRIM_ENABLE_MEMORY;
-    }
-
-    private static int computeTrimEmptyApps(int rawMaxEmptyProcesses) {
-        if (USE_TRIM_SETTINGS && allowTrim()) {
-            return rawMaxEmptyProcesses * TRIM_EMPTY_PERCENT / 100;
-        } else {
-            return rawMaxEmptyProcesses / 2;
-        }
-    }
-
-    private static int computeTrimCachedApps(int rawMaxEmptyProcesses, int totalProcessLimit) {
-        if (USE_TRIM_SETTINGS && allowTrim()) {
-            return totalProcessLimit * TRIM_CACHE_PERCENT / 100;
-        } else {
-            return (totalProcessLimit - rawMaxEmptyProcesses) / 3;
-        }
     }
 }

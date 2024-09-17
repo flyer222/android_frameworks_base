@@ -1099,9 +1099,6 @@ public abstract class Layout {
             if (limit > lineEnd) {
                 limit = lineEnd;
             }
-            if (limit == start) {
-                continue;
-            }
             level[limit - lineStart - 1] =
                     (byte) ((runs[i + 1] >>> RUN_LEVEL_SHIFT) & RUN_LEVEL_MASK);
         }
@@ -1197,8 +1194,8 @@ public abstract class Layout {
     }
 
     /**
-     * Computes in linear time the results of calling #getHorizontal for all offsets on a line.
-     *
+     * Computes in linear time the results of calling
+     * #getHorizontal for all offsets on a line.
      * @param line The line giving the offsets we compute information for
      * @param clamped Whether to clamp the results to the width of the layout
      * @param primary Whether the results should be the primary or the secondary horizontal
@@ -1233,7 +1230,7 @@ public abstract class Layout {
         TextLine.recycle(tl);
 
         if (clamped) {
-            for (int offset = 0; offset < wid.length; ++offset) {
+            for (int offset = 0; offset <= wid.length; ++offset) {
                 if (wid[offset] > mWidth) {
                     wid[offset] = mWidth;
                 }
@@ -1586,8 +1583,7 @@ public abstract class Layout {
         }
 
         float get(final int offset) {
-            if (mHorizontals == null || offset < mLineStartOffset
-                    || offset >= mLineStartOffset + mHorizontals.length) {
+            if (mHorizontals == null) {
                 return getHorizontal(offset, mPrimary);
             } else {
                 return mHorizontals[offset - mLineStartOffset];
@@ -2280,10 +2276,7 @@ public abstract class Layout {
         final int ellipsisStringLen = ellipsisString.length();
         // Use the ellipsis string only if there are that at least as many characters to replace.
         final boolean useEllipsisString = ellipsisCount >= ellipsisStringLen;
-        final int min = Math.max(0, start - ellipsisStart - lineStart);
-        final int max = Math.min(ellipsisCount, end - ellipsisStart - lineStart);
-
-        for (int i = min; i < max; i++) {
+        for (int i = 0; i < ellipsisCount; i++) {
             final char c;
             if (useEllipsisString && i < ellipsisStringLen) {
                 c = ellipsisString.charAt(i);
@@ -2292,7 +2285,9 @@ public abstract class Layout {
             }
 
             final int a = i + ellipsisStart + lineStart;
-            dest[destoff + a - start] = c;
+            if (start <= a && a < end) {
+                dest[destoff + a - start] = c;
+            }
         }
     }
 

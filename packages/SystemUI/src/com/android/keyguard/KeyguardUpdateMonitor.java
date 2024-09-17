@@ -82,14 +82,10 @@ import com.android.internal.telephony.PhoneConstants;
 import com.android.internal.telephony.TelephonyIntents;
 import com.android.internal.util.Preconditions;
 import com.android.internal.widget.LockPatternUtils;
-import com.android.settingslib.WirelessUtils;
 import com.android.systemui.recents.misc.SysUiTaskStackChangeListener;
 import com.android.systemui.shared.system.ActivityManagerWrapper;
 
 import com.google.android.collect.Lists;
-
-import org.lineageos.internal.util.TelephonyExtUtils;
-import org.lineageos.internal.util.TelephonyExtUtils.ProvisioningChangedListener;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
@@ -109,8 +105,7 @@ import java.util.Map.Entry;
  * the device, and {@link #getFailedUnlockAttempts()}, {@link #reportFailedAttempt()}
  * and {@link #clearFailedUnlockAttempts()}.  Maybe we should rename this 'KeyguardContext'...
  */
-public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
-        ProvisioningChangedListener {
+public class KeyguardUpdateMonitor implements TrustManager.TrustListener {
 
     private static final String TAG = "KeyguardUpdateMonitor";
     private static final boolean DEBUG = KeyguardConstants.DEBUG;
@@ -151,7 +146,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     private static final int MSG_ASSISTANT_STACK_CHANGED = 335;
     private static final int MSG_FINGERPRINT_AUTHENTICATION_CONTINUE = 336;
     private static final int MSG_DEVICE_POLICY_MANAGER_STATE_CHANGED = 337;
-    private static final int MSG_TELEPHONY_CAPABLE = 338;
 
     /** Fingerprint state: Not listening to fingerprint. */
     private static final int FINGERPRINT_STATE_STOPPED = 0;
@@ -196,7 +190,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     private final Context mContext;
     HashMap<Integer, SimData> mSimDatas = new HashMap<Integer, SimData>();
     HashMap<Integer, ServiceState> mServiceStates = new HashMap<Integer, ServiceState>();
-    HashMap<Integer, State> mProvisionStates = new HashMap<Integer, State>();
 
     private int mRingMode;
     private int mPhoneState;
@@ -209,14 +202,15 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     private boolean mHasLockscreenWallpaper;
     private boolean mAssistantVisible;
     private boolean mKeyguardOccluded;
-    @VisibleForTesting
-    protected boolean mTelephonyCapable;
 
     // Device provisioning state
     private boolean mDeviceProvisioned;
 
     // Battery status
     private BatteryStatus mBatteryStatus;
+
+    // Password attempts
+    private SparseIntArray mFailedAttempts = new SparseIntArray();
 
     private final StrongAuthTracker mStrongAuthTracker;
 
@@ -238,7 +232,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     private boolean mIsDreaming;
     private final DevicePolicyManager mDevicePolicyManager;
     private boolean mLogoutEnabled;
-    private final boolean mFingerprintWakeAndUnlock;
 
     /**
      * Short delay before restarting fingerprint authentication after a successful try
@@ -347,21 +340,12 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
                 case MSG_DEVICE_POLICY_MANAGER_STATE_CHANGED:
                     updateLogoutEnabled();
                     break;
-                case MSG_TELEPHONY_CAPABLE:
-                    updateTelephonyCapable((boolean)msg.obj);
-                    break;
                 default:
                     super.handleMessage(msg);
                     break;
             }
         }
     };
-
-    @Override
-    public void onProvisioningChanged(int slotId, boolean isProvisioned) {
-        mProvisionStates.put(slotId, isProvisioned ? State.UNKNOWN : State.NOT_READY);
-        handleSimSubscriptionInfoChanged();
-    }
 
     private OnSubscriptionsChangedListener mSubscriptionListener =
             new OnSubscriptionsChangedListener() {
@@ -808,18 +792,14 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
                                 maxChargingMicroWatt));
                 mHandler.sendMessage(msg);
             } else if (TelephonyIntents.ACTION_SIM_STATE_CHANGED.equals(action)) {
-                SimData args = SimData.fromIntent(intent);
                 // ACTION_SIM_STATE_CHANGED is rebroadcast after unlocking the device to
                 // keep compatibility with apps that aren't direct boot aware.
                 // SysUI should just ignore this broadcast because it was already received
                 // and processed previously.
                 if (intent.getBooleanExtra(TelephonyIntents.EXTRA_REBROADCAST_ON_UNLOCK, false)) {
-                    // Guarantee mTelephonyCapable state after SysUI crash and restart
-                    if (args.simState == State.ABSENT) {
-                        mHandler.obtainMessage(MSG_TELEPHONY_CAPABLE, true).sendToTarget();
-                    }
                     return;
                 }
+                SimData args = SimData.fromIntent(intent);
                 if (DEBUG_SIM_STATES) {
                     Log.v(TAG, "action " + action
                         + " state: " + intent.getStringExtra(IccCardConstants.INTENT_KEY_ICC_STATE)
@@ -1188,8 +1168,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
         mSubscriptionManager = SubscriptionManager.from(context);
         mDeviceProvisioned = isDeviceProvisionedInSettingsDb();
         mStrongAuthTracker = new StrongAuthTracker(context);
-        mFingerprintWakeAndUnlock = mContext.getResources().getBoolean(
-                com.android.keyguard.R.bool.config_fingerprintWakeAndUnlock);
 
         // Since device can't be un-provisioned, we only need to register a content observer
         // to update mDeviceProvisioned when we are...
@@ -1268,16 +1246,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
         mUserManager = context.getSystemService(UserManager.class);
         mDevicePolicyManager = context.getSystemService(DevicePolicyManager.class);
         mLogoutEnabled = mDevicePolicyManager.isLogoutEnabled();
-        updateAirplaneModeState();
-    }
-
-    private void updateAirplaneModeState() {
-        // ACTION_AIRPLANE_MODE_CHANGED do not broadcast if device set AirplaneMode ON and boot
-        if (!WirelessUtils.isAirplaneModeOn(mContext)
-                || mHandler.hasMessages(MSG_AIRPLANE_MODE_CHANGED)) {
-            return;
-        }
-        mHandler.sendEmptyMessage(MSG_AIRPLANE_MODE_CHANGED);
     }
 
     private void updateFingerprintListeningState() {
@@ -1303,18 +1271,11 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     }
 
     private boolean shouldListenForFingerprint() {
-        if (!mFingerprintWakeAndUnlock) {
-            return (mKeyguardIsVisible || mBouncer || shouldListenForFingerprintAssistant() ||
-                    (mKeyguardOccluded && mIsDreaming)) && mDeviceInteractive && !mGoingToSleep
-                    && !mSwitchingUser && !isFingerprintDisabled(getCurrentUser())
-                    && !mKeyguardGoingAway;
-        } else {
-            return (mKeyguardIsVisible || !mDeviceInteractive ||
-                    (mBouncer && !mKeyguardGoingAway) || mGoingToSleep ||
-                    shouldListenForFingerprintAssistant() || (mKeyguardOccluded && mIsDreaming))
-                    && !mSwitchingUser && !isFingerprintDisabled(getCurrentUser())
-                    && !mKeyguardGoingAway;
-        }
+        return (mKeyguardIsVisible || !mDeviceInteractive ||
+                (mBouncer && !mKeyguardGoingAway) || mGoingToSleep ||
+                shouldListenForFingerprintAssistant() || (mKeyguardOccluded && mIsDreaming))
+                && !mSwitchingUser && !isFingerprintDisabled(getCurrentUser())
+                && !mKeyguardGoingAway;
     }
 
     private void startListeningForFingerprint() {
@@ -1475,8 +1436,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
                 cb.onBootCompleted();
             }
         }
-
-        TelephonyExtUtils.getInstance(mContext).addListener(this);
     }
 
     /**
@@ -1569,23 +1528,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     }
 
     /**
-     * Handle Telephony status during Boot for CarrierText display policy
-     */
-    @VisibleForTesting
-    void updateTelephonyCapable(boolean capable){
-        if (capable == mTelephonyCapable) {
-            return;
-        }
-        mTelephonyCapable = capable;
-        for (WeakReference<KeyguardUpdateMonitorCallback> ref : mCallbacks) {
-            KeyguardUpdateMonitorCallback cb = ref.get();
-            if (cb != null) {
-                cb.onTelephonyCapable(mTelephonyCapable);
-            }
-        }
-    }
-
-    /**
      * Handle {@link #MSG_SIM_STATE_CHANGE}
      */
     @VisibleForTesting
@@ -1596,25 +1538,9 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
                     + slotId + ", state=" + state +")");
         }
 
-        boolean becameAbsent = false;
         if (!SubscriptionManager.isValidSubscriptionId(subId)) {
             Log.w(TAG, "invalid subId in handleSimStateChange()");
-            /* Only handle No SIM(ABSENT) due to handleServiceStateChange() handle other case */
-            if (state == State.ABSENT) {
-                updateTelephonyCapable(true);
-                // Even though the subscription is not valid anymore, we need to notify that the
-                // SIM card was removed so we can update the UI.
-                becameAbsent = true;
-                for (SimData data : mSimDatas.values()) {
-                    // Set the SIM state of all SimData associated with that slot to ABSENT se we
-                    // do not move back into PIN/PUK locked and not detect the change below.
-                    if (data.slotId == slotId) {
-                        data.simState = State.ABSENT;
-                    }
-                }
-            } else {
-                return;
-            }
+            return;
         }
 
         SimData data = mSimDatas.get(subId);
@@ -1629,7 +1555,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
             data.subId = subId;
             data.slotId = slotId;
         }
-        if ((changed || becameAbsent) && state != State.UNKNOWN) {
+        if (changed && state != State.UNKNOWN) {
             for (int i = 0; i < mCallbacks.size(); i++) {
                 KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
                 if (cb != null) {
@@ -1642,8 +1568,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
     /**
      * Handle {@link #MSG_SERVICE_STATE_CHANGE}
      */
-    @VisibleForTesting
-    void handleServiceStateChange(int subId, ServiceState serviceState) {
+    private void handleServiceStateChange(int subId, ServiceState serviceState) {
         if (DEBUG) {
             Log.d(TAG,
                     "handleServiceStateChange(subId=" + subId + ", serviceState=" + serviceState);
@@ -1652,8 +1577,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
         if (!SubscriptionManager.isValidSubscriptionId(subId)) {
             Log.w(TAG, "invalid subId in handleServiceStateChange()");
             return;
-        } else {
-            updateTelephonyCapable(true);
         }
 
         mServiceStates.put(subId, serviceState);
@@ -1664,10 +1587,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
                 cb.onRefreshCarrierInfo();
             }
         }
-    }
-
-    public boolean isKeyguardVisible() {
-        return mKeyguardIsVisible;
     }
 
     /**
@@ -1817,7 +1736,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
         callback.onRefreshCarrierInfo();
         callback.onClockVisibilityChanged();
         callback.onKeyguardVisibilityChangedRaw(mKeyguardIsVisible);
-        callback.onTelephonyCapable(mTelephonyCapable);
         for (Entry<Integer, SimData> data : mSimDatas.entrySet()) {
             final SimData state = data.getValue();
             callback.onSimStateChanged(state.subId, state.slotId, state.simState);
@@ -1878,8 +1796,20 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
         return mDeviceProvisioned;
     }
 
+    public void clearFailedUnlockAttempts() {
+        mFailedAttempts.delete(sCurrentUser);
+    }
+
     public ServiceState getServiceState(int subId) {
         return mServiceStates.get(subId);
+    }
+
+    public int getFailedUnlockAttempts(int userId) {
+        return mFailedAttempts.get(userId, 0);
+    }
+
+    public void reportFailedStrongAuthUnlockAttempt(int userId) {
+        mFailedAttempts.put(userId, getFailedUnlockAttempts(userId) + 1);
     }
 
     public void clearFingerprintRecognized() {
@@ -1944,20 +1874,6 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener,
             Log.w(TAG, "Unknown sim state: " + simState);
             state = State.UNKNOWN;
         }
-
-        // Try to get provision-status from telephony extensions and override the state if valid
-        TelephonyExtUtils extTelephony = TelephonyExtUtils.getInstance(mContext);
-        if (extTelephony.hasService()) {
-            State extState = mProvisionStates.get(slotId);
-            if (extState == null) {
-                extState = extTelephony.isSlotProvisioned(slotId) ? State.UNKNOWN : State.NOT_READY;
-                mProvisionStates.put(slotId, extState);
-            }
-            if (extState != null && extState != State.UNKNOWN) {
-                state = extState;
-            }
-        }
-
         SimData data = mSimDatas.get(subId);
         final boolean changed;
         if (data == null) {

@@ -1548,7 +1548,7 @@ public final class DocumentsContract {
      *
      * <p>Note, that due to internal limitations, if there is already a web link
      * intent created for the specified document but with different options,
-     * then it may be overridden.
+     * then it may be overriden.
      *
      * <p>Providers are required to show confirmation UI for all new permissions granted
      * for the linked document.

@@ -27,7 +27,7 @@ import android.util.AttributeSet;
 import java.util.Calendar;
 
 /**
- * Like AnalogClock, but digital.
+ * Like AnalogClock, but digital.  Shows seconds.
  *
  * @deprecated It is recommended you use {@link TextClock} instead.
  */

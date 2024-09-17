@@ -81,7 +81,6 @@ import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
 import android.os.ServiceManager;
-import android.os.ServiceSpecificException;
 import android.os.SystemClock;
 import android.os.SystemProperties;
 import android.os.UserHandle;
@@ -126,7 +125,6 @@ import com.android.internal.util.Preconditions;
 import com.android.internal.widget.LockPatternUtils;
 import com.android.server.pm.PackageManagerService;
 import com.android.server.storage.AppFuseBridge;
-import com.android.internal.widget.ILockSettings;
 
 import libcore.io.IoUtils;
 import libcore.util.EmptyArray;
@@ -1178,9 +1176,9 @@ class StorageManagerService extends IStorageManager.Stub
                 vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
             }
 
-            // Set sdcards to visible to apps. If they are visible media is scanned
-            // and they can be used for other stuff.
-            if (vol.disk.isSd()) {
+            // Adoptable public disks are visible to apps, since they meet
+            // public API requirement of being in a stable location.
+            if (vol.disk.isAdoptable()) {
                 vol.mountFlags |= VolumeInfo.MOUNT_FLAG_VISIBLE;
             }
 
@@ -2256,9 +2254,6 @@ class StorageManagerService extends IStorageManager.Stub
                 }
             }, DateUtils.SECOND_IN_MILLIS);
             return 0;
-        } catch (ServiceSpecificException e) {
-            Slog.e(TAG, "fdeCheckPassword failed", e);
-            return e.errorCode;
         } catch (Exception e) {
             Slog.wtf(TAG, e);
             return StorageManager.ENCRYPTION_STATE_ERROR_UNKNOWN;
@@ -2314,22 +2309,8 @@ class StorageManagerService extends IStorageManager.Stub
             Slog.i(TAG, "changing encryption password...");
         }
 
-        ILockSettings lockSettings = ILockSettings.Stub.asInterface(
-                        ServiceManager.getService("lock_settings"));
-        String currentPassword="default_password";
         try {
-            currentPassword = lockSettings.getPassword();
-        } catch (Exception e) {
-            Slog.wtf(TAG, "Couldn't get password" + e);
-        }
-
-        try {
-            mVold.fdeChangePassword(type, currentPassword, password);
-            try {
-                lockSettings.sanitizePassword();
-            } catch (Exception e) {
-                Slog.wtf(TAG, "Couldn't sanitize password" + e);
-            }
+            mVold.fdeChangePassword(type, password);
             return 0;
         } catch (Exception e) {
             Slog.wtf(TAG, e);
@@ -2518,24 +2499,6 @@ class StorageManagerService extends IStorageManager.Stub
 
         try {
             mVold.addUserKeyAuth(userId, serialNumber, encodeBytes(token), encodeBytes(secret));
-        } catch (Exception e) {
-            Slog.wtf(TAG, e);
-        }
-    }
-
-    /*
-     * Clear disk encryption key bound to the associated token / secret pair. Removing the user
-     * binding of the Disk encryption key is done in two phases: first, this call will retrieve
-     * the disk encryption key using the provided token / secret pair and store it by
-     * encrypting it with a keymaster key not bound to the user, then fixateNewestUserKeyAuth
-     * is called to delete all other bindings of the disk encryption key.
-     */
-    @Override
-    public void clearUserKeyAuth(int userId, int serialNumber, byte[] token, byte[] secret) {
-        enforcePermission(android.Manifest.permission.STORAGE_INTERNAL);
-
-        try {
-            mVold.clearUserKeyAuth(userId, serialNumber, encodeBytes(token), encodeBytes(secret));
         } catch (Exception e) {
             Slog.wtf(TAG, e);
         }

@@ -27,33 +27,32 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-
 import com.android.systemui.tuner.TunerService;
 import com.android.systemui.tuner.TunerService.Tunable;
 import com.android.systemui.util.leak.RotationUtils;
+
+import java.util.ArrayList;
 
 import static com.android.systemui.util.leak.RotationUtils.ROTATION_LANDSCAPE;
 import static com.android.systemui.util.leak.RotationUtils.ROTATION_NONE;
 import static com.android.systemui.util.leak.RotationUtils.ROTATION_SEASCAPE;
 
-public class HardwareUiLayout extends LinearLayout implements Tunable {
+public class HardwareUiLayout extends FrameLayout implements Tunable {
 
     private static final String EDGE_BLEED = "sysui_hwui_edge_bleed";
     private static final String ROUNDED_DIVIDER = "sysui_hwui_rounded_divider";
     private final int[] mTmp2 = new int[2];
-    private View mList;
-    private View mSeparatedView;
+    private View mChild;
     private int mOldHeight;
     private boolean mAnimating;
     private AnimatorSet mAnimation;
     private View mDivision;
     private boolean mHasOutsideTouch;
-    private HardwareBgDrawable mListBackground;
-    private HardwareBgDrawable mSeparatedViewBackground;
+    private HardwareBgDrawable mBackground;
     private Animator mAnimator;
     private boolean mCollapse;
-    private boolean mHasSeparatedButton;
     private int mEndPoint;
     private boolean mEdgeBleed;
     private boolean mRoundedDivider;
@@ -92,32 +91,16 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
         mRoundedDivider = Settings.Secure.getInt(getContext().getContentResolver(),
                 ROUNDED_DIVIDER, 0) != 0;
         updateEdgeMargin(mEdgeBleed ? 0 : getEdgePadding());
-        mListBackground = new HardwareBgDrawable(mRoundedDivider, !mEdgeBleed, getContext());
-        mSeparatedViewBackground = new HardwareBgDrawable(mRoundedDivider, !mEdgeBleed,
-                getContext());
-        if (mList != null) {
-            mList.setBackground(mListBackground);
-            mSeparatedView.setBackground(mSeparatedViewBackground);
+        mBackground = new HardwareBgDrawable(mRoundedDivider, !mEdgeBleed, getContext());
+        if (mChild != null) {
+            mChild.setBackground(mBackground);
             requestLayout();
         }
     }
 
     private void updateEdgeMargin(int edge) {
-        if (mList != null) {
-            MarginLayoutParams params = (MarginLayoutParams) mList.getLayoutParams();
-            if (mRotation == ROTATION_LANDSCAPE) {
-                params.topMargin = edge;
-            } else if (mRotation == ROTATION_SEASCAPE) {
-                params.bottomMargin = edge;
-            } else {
-                params.rightMargin = edge;
-                params.leftMargin = edge;
-            }
-            mList.setLayoutParams(params);
-        }
-
-        if (mSeparatedView != null) {
-            MarginLayoutParams params = (MarginLayoutParams) mSeparatedView.getLayoutParams();
+        if (mChild != null) {
+            MarginLayoutParams params = (MarginLayoutParams) mChild.getLayoutParams();
             if (mRotation == ROTATION_LANDSCAPE) {
                 params.topMargin = edge;
             } else if (mRotation == ROTATION_SEASCAPE) {
@@ -125,7 +108,7 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
             } else {
                 params.rightMargin = edge;
             }
-            mSeparatedView.setLayoutParams(params);
+            mChild.setLayoutParams(params);
         }
     }
 
@@ -136,25 +119,24 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
-        if (mList == null) {
+        if (mChild == null) {
             if (getChildCount() != 0) {
-                mList = getChildAt(0);
-                mList.setBackground(mListBackground);
-                mSeparatedView = getChildAt(1);
-                mSeparatedView.setBackground(mSeparatedViewBackground);
+                mChild = getChildAt(0);
+                mChild.setBackground(mBackground);
                 updateEdgeMargin(mEdgeBleed ? 0 : getEdgePadding());
-                mOldHeight = mList.getMeasuredHeight();
+                mOldHeight = mChild.getMeasuredHeight();
+                mChild.addOnLayoutChangeListener(
+                        (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) ->
+                                updatePosition());
                 updateRotation();
             } else {
                 return;
             }
         }
-        int newHeight = mList.getMeasuredHeight();
+        int newHeight = mChild.getMeasuredHeight();
         if (newHeight != mOldHeight) {
             animateChild(mOldHeight, newHeight);
         }
-
-        post(() -> updatePaddingAndGravityIfTooTall());
         post(() -> updatePosition());
     }
 
@@ -188,60 +170,37 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
         } else {
             rotateLeft();
         }
-        if (mHasSeparatedButton) {
-            if (from == ROTATION_SEASCAPE || to == ROTATION_SEASCAPE) {
-                // Separated view has top margin, so seascape separated view need special rotation,
-                // not a full left or right rotation.
-                swapLeftAndTop(mSeparatedView);
-            } else if (from == ROTATION_LANDSCAPE) {
-                rotateRight(mSeparatedView);
-            } else {
-                rotateLeft(mSeparatedView);
-            }
-        }
         if (to != ROTATION_NONE) {
-            if (mList instanceof LinearLayout) {
+            if (mChild instanceof LinearLayout) {
                 mRotatedBackground = true;
-                mListBackground.setRotatedBackground(true);
-                mSeparatedViewBackground.setRotatedBackground(true);
-                LinearLayout linearLayout = (LinearLayout) mList;
+                mBackground.setRotatedBackground(true);
+                LinearLayout linearLayout = (LinearLayout) mChild;
                 if (mSwapOrientation) {
                     linearLayout.setOrientation(LinearLayout.HORIZONTAL);
-                    setOrientation(LinearLayout.HORIZONTAL);
                 }
-                swapDimens(mList);
-                swapDimens(mSeparatedView);
+                swapDimens(this.mChild);
             }
         } else {
-            if (mList instanceof LinearLayout) {
+            if (mChild instanceof LinearLayout) {
                 mRotatedBackground = false;
-                mListBackground.setRotatedBackground(false);
-                mSeparatedViewBackground.setRotatedBackground(false);
-                LinearLayout linearLayout = (LinearLayout) mList;
+                mBackground.setRotatedBackground(false);
+                LinearLayout linearLayout = (LinearLayout) mChild;
                 if (mSwapOrientation) {
                     linearLayout.setOrientation(LinearLayout.VERTICAL);
-                    setOrientation(LinearLayout.VERTICAL);
                 }
-                swapDimens(mList);
-                swapDimens(mSeparatedView);
+                swapDimens(mChild);
             }
         }
     }
 
     private void rotateRight() {
         rotateRight(this);
-        rotateRight(mList);
+        rotateRight(mChild);
         swapDimens(this);
 
-        LayoutParams p = (LayoutParams) mList.getLayoutParams();
+        LayoutParams p = (LayoutParams) mChild.getLayoutParams();
         p.gravity = rotateGravityRight(p.gravity);
-        mList.setLayoutParams(p);
-
-        LayoutParams separatedViewLayoutParams = (LayoutParams) mSeparatedView.getLayoutParams();
-        separatedViewLayoutParams.gravity = rotateGravityRight(separatedViewLayoutParams.gravity);
-        mSeparatedView.setLayoutParams(separatedViewLayoutParams);
-
-        setGravity(rotateGravityRight(getGravity()));
+        mChild.setLayoutParams(p);
     }
 
     private void swapDimens(View v) {
@@ -288,18 +247,12 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
 
     private void rotateLeft() {
         rotateLeft(this);
-        rotateLeft(mList);
+        rotateLeft(mChild);
         swapDimens(this);
 
-        LayoutParams p = (LayoutParams) mList.getLayoutParams();
+        LayoutParams p = (LayoutParams) mChild.getLayoutParams();
         p.gravity = rotateGravityLeft(p.gravity);
-        mList.setLayoutParams(p);
-
-        LayoutParams separatedViewLayoutParams = (LayoutParams) mSeparatedView.getLayoutParams();
-        separatedViewLayoutParams.gravity = rotateGravityLeft(separatedViewLayoutParams.gravity);
-        mSeparatedView.setLayoutParams(separatedViewLayoutParams);
-
-        setGravity(rotateGravityLeft(getGravity()));
+        mChild.setLayoutParams(p);
     }
 
     private int rotateGravityLeft(int gravity) {
@@ -357,15 +310,6 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
         v.setLayoutParams(params);
     }
 
-    private void swapLeftAndTop(View v) {
-        v.setPadding(v.getPaddingTop(), v.getPaddingLeft(), v.getPaddingBottom(),
-                v.getPaddingRight());
-        MarginLayoutParams params = (MarginLayoutParams) v.getLayoutParams();
-        params.setMargins(params.topMargin, params.leftMargin, params.bottomMargin,
-                params.rightMargin);
-        v.setLayoutParams(params);
-    }
-
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
@@ -385,14 +329,14 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
                 mAnimating = false;
             }
         });
-        int fromTop = mList.getTop();
-        int fromBottom = mList.getBottom();
+        int fromTop = mChild.getTop();
+        int fromBottom = mChild.getBottom();
         int toTop = fromTop - ((newHeight - oldHeight) / 2);
         int toBottom = fromBottom + ((newHeight - oldHeight) / 2);
-        ObjectAnimator top = ObjectAnimator.ofInt(mList, "top", fromTop, toTop);
-        top.addUpdateListener(animation -> mListBackground.invalidateSelf());
+        ObjectAnimator top = ObjectAnimator.ofInt(mChild, "top", fromTop, toTop);
+        top.addUpdateListener(animation -> mBackground.invalidateSelf());
         mAnimation.playTogether(top,
-                ObjectAnimator.ofInt(mList, "bottom", fromBottom, toBottom));
+                ObjectAnimator.ofInt(mChild, "bottom", fromBottom, toBottom));
     }
 
     public void setDivisionView(View v) {
@@ -406,30 +350,26 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
     }
 
     private void updatePosition() {
-        if (mList == null) return;
-        // If got separated button, setRotatedBackground to false,
-        // all items won't get white background.
-        mListBackground.setRotatedBackground(mHasSeparatedButton);
-        mSeparatedViewBackground.setRotatedBackground(mHasSeparatedButton);
+        if (mChild == null) return;
         if (mDivision != null && mDivision.getVisibility() == VISIBLE) {
             int index = mRotatedBackground ? 0 : 1;
             mDivision.getLocationOnScreen(mTmp2);
             float trans = mRotatedBackground ? mDivision.getTranslationX()
                     : mDivision.getTranslationY();
             int viewTop = (int) (mTmp2[index] + trans);
-            mList.getLocationOnScreen(mTmp2);
+            mChild.getLocationOnScreen(mTmp2);
             viewTop -= mTmp2[index];
             setCutPoint(viewTop);
         } else {
-            setCutPoint(mList.getMeasuredHeight());
+            setCutPoint(mChild.getMeasuredHeight());
         }
     }
 
     private void setCutPoint(int point) {
-        int curPoint = mListBackground.getCutPoint();
+        int curPoint = mBackground.getCutPoint();
         if (curPoint == point) return;
         if (getAlpha() == 0 || curPoint == 0) {
-            mListBackground.setCutPoint(point);
+            mBackground.setCutPoint(point);
             return;
         }
         if (mAnimator != null) {
@@ -439,52 +379,12 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
             mAnimator.cancel();
         }
         mEndPoint = point;
-        mAnimator = ObjectAnimator.ofInt(mListBackground, "cutPoint", curPoint, point);
+        mAnimator = ObjectAnimator.ofInt(mBackground, "cutPoint", curPoint, point);
         if (mCollapse) {
             mAnimator.setStartDelay(300);
             mCollapse = false;
         }
         mAnimator.start();
-    }
-
-    // If current power menu height larger then screen height, remove padding to break power menu
-    // alignment and set menu center vertical within the screen.
-    private void updatePaddingAndGravityIfTooTall() {
-        int defaultTopPadding;
-        int viewsTotalHeight;
-        int separatedViewTopMargin;
-        int screenHeight;
-        int totalHeight;
-        int targetGravity;
-        MarginLayoutParams params = (MarginLayoutParams) mSeparatedView.getLayoutParams();
-        switch (RotationUtils.getRotation(getContext())) {
-            case RotationUtils.ROTATION_LANDSCAPE:
-                defaultTopPadding = getPaddingLeft();
-                viewsTotalHeight = mList.getMeasuredWidth() + mSeparatedView.getMeasuredWidth();
-                separatedViewTopMargin = mHasSeparatedButton ? params.leftMargin : 0;
-                screenHeight = getMeasuredWidth();
-                targetGravity = Gravity.CENTER_HORIZONTAL|Gravity.TOP;
-                break;
-            case RotationUtils.ROTATION_SEASCAPE:
-                defaultTopPadding = getPaddingRight();
-                viewsTotalHeight = mList.getMeasuredWidth() + mSeparatedView.getMeasuredWidth();
-                separatedViewTopMargin = mHasSeparatedButton ? params.leftMargin : 0;
-                screenHeight = getMeasuredWidth();
-                targetGravity = Gravity.CENTER_HORIZONTAL|Gravity.BOTTOM;
-                break;
-            default: // Portrait
-                defaultTopPadding = getPaddingTop();
-                viewsTotalHeight = mList.getMeasuredHeight() + mSeparatedView.getMeasuredHeight();
-                separatedViewTopMargin = mHasSeparatedButton ? params.topMargin : 0;
-                screenHeight = getMeasuredHeight();
-                targetGravity = Gravity.CENTER_VERTICAL|Gravity.RIGHT;
-                break;
-        }
-        totalHeight = defaultTopPadding + viewsTotalHeight + separatedViewTopMargin;
-        if (totalHeight >= screenHeight) {
-            setPadding(0, 0, 0, 0);
-            setGravity(targetGravity);
-        }
     }
 
     @Override
@@ -504,10 +404,6 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
         mCollapse = true;
     }
 
-    public void setHasSeparatedButton(boolean hasSeparatedButton) {
-        mHasSeparatedButton = hasSeparatedButton;
-    }
-
     public static HardwareUiLayout get(View v) {
         if (v instanceof HardwareUiLayout) return (HardwareUiLayout) v;
         if (v.getParent() instanceof View) {
@@ -517,14 +413,14 @@ public class HardwareUiLayout extends LinearLayout implements Tunable {
     }
 
     private final ViewTreeObserver.OnComputeInternalInsetsListener mInsetsListener = inoutInfo -> {
-        if (mHasOutsideTouch || (mList == null)) {
+        if (mHasOutsideTouch || (mChild == null)) {
             inoutInfo.setTouchableInsets(
                     ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_FRAME);
             return;
         }
         inoutInfo.setTouchableInsets(
                 ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_CONTENT);
-        inoutInfo.contentInsets.set(mList.getLeft(), mList.getTop(),
-                0, getBottom() - mList.getBottom());
+        inoutInfo.contentInsets.set(mChild.getLeft(), mChild.getTop(),
+                0, getBottom() - mChild.getBottom());
     };
 }

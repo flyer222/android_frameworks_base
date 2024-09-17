@@ -35,7 +35,6 @@ import android.media.session.PlaybackState;
 import android.os.Debug;
 import android.os.Handler;
 import android.os.RemoteException;
-import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
@@ -243,8 +242,7 @@ public class PipManager implements BasePipManager {
         ActivityManagerWrapper.getInstance().registerTaskStackListener(mTaskStackListener);
         IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(Intent.ACTION_MEDIA_RESOURCE_GRANTED);
-        mContext.registerReceiverAsUser(mBroadcastReceiver, UserHandle.ALL, intentFilter,
-                null, null);
+        mContext.registerReceiver(mBroadcastReceiver, intentFilter);
 
         if (sSettingsPackageAndClassNamePairList == null) {
             String[] settings = mContext.getResources().getStringArray(

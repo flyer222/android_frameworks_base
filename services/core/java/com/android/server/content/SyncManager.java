@@ -16,8 +16,6 @@
 
 package com.android.server.content;
 
-import static com.android.server.content.SyncLogger.logSafe;
-
 import android.accounts.Account;
 import android.accounts.AccountAndUser;
 import android.accounts.AccountManager;
@@ -1177,7 +1175,7 @@ public class SyncManager {
             /* ignore - local call */
         }
         if (checkAccountAccess && !canAccessAccount(account, owningPackage, owningUid)) {
-            Log.w(TAG, "Access to " + logSafe(account) + " denied for package "
+            Log.w(TAG, "Access to " + account + " denied for package "
                     + owningPackage + " in UID " + syncAdapterInfo.uid);
             return AuthorityInfo.SYNCABLE_NO_ACCOUNT_ACCESS;
         }
@@ -1510,8 +1508,7 @@ public class SyncManager {
         if (!syncOperation.ignoreBackoff()) {
             Pair<Long, Long> backoff = mSyncStorageEngine.getBackoff(syncOperation.target);
             if (backoff == null) {
-                Slog.e(TAG, "Couldn't find backoff values for "
-                        + logSafe(syncOperation.target));
+                Slog.e(TAG, "Couldn't find backoff values for " + syncOperation.target);
                 backoff = new Pair<Long, Long>(SyncStorageEngine.NOT_IN_BACKOFF_MODE,
                         SyncStorageEngine.NOT_IN_BACKOFF_MODE);
             }
@@ -1782,8 +1779,8 @@ public class SyncManager {
             scheduleSyncOperationH(operation);
         } else {
             // Otherwise do not reschedule.
-            Log.e(TAG, "not retrying sync operation because the error is a hard error: "
-                    + logSafe(operation));
+            Log.d(TAG, "not retrying sync operation because the error is a hard error: "
+                    + operation);
         }
     }
 
@@ -1917,12 +1914,11 @@ public class SyncManager {
             sendSyncFinishedOrCanceledMessage(this, result);
         }
 
-        public void toString(StringBuilder sb, boolean logSafe) {
+        public void toString(StringBuilder sb) {
             sb.append("startTime ").append(mStartTime)
                     .append(", mTimeoutStartTime ").append(mTimeoutStartTime)
                     .append(", mHistoryRowId ").append(mHistoryRowId)
-                    .append(", syncOperation ").append(
-                        logSafe ? logSafe(mSyncOperation) : mSyncOperation);
+                    .append(", syncOperation ").append(mSyncOperation);
         }
 
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -1984,13 +1980,7 @@ public class SyncManager {
 
         public String toString() {
             StringBuilder sb = new StringBuilder();
-            toString(sb, false);
-            return sb.toString();
-        }
-
-        public String toSafeString() {
-            StringBuilder sb = new StringBuilder();
-            toString(sb, true);
+            toString(sb);
             return sb.toString();
         }
 
@@ -2079,7 +2069,7 @@ public class SyncManager {
         int count = 0;
         for (SyncOperation op: pendingSyncs) {
             if (!op.isPeriodic) {
-                pw.println(op.dump(null, false, buckets, /*logSafe=*/ false));
+                pw.println(op.dump(null, false, buckets));
                 count++;
             }
         }
@@ -2096,7 +2086,7 @@ public class SyncManager {
         int count = 0;
         for (SyncOperation op: pendingSyncs) {
             if (op.isPeriodic) {
-                pw.println(op.dump(null, false, buckets, /*logSafe=*/ false));
+                pw.println(op.dump(null, false, buckets));
                 count++;
             }
         }
@@ -2229,7 +2219,7 @@ public class SyncManager {
             sb.setLength(0);
             pw.print(formatDurationHMS(sb, durationInSeconds));
             pw.print(" - ");
-            pw.print(activeSyncContext.mSyncOperation.dump(pm, false, buckets, /*logSafe=*/ false));
+            pw.print(activeSyncContext.mSyncOperation.dump(pm, false, buckets));
             pw.println();
         }
         pw.println();
@@ -3060,7 +3050,7 @@ public class SyncManager {
                     case SyncHandler.MESSAGE_CANCEL:
                         SyncStorageEngine.EndPoint endpoint = (SyncStorageEngine.EndPoint) msg.obj;
                         Bundle extras = msg.peekData();
-                        if (isLoggable) {
+                        if (Log.isLoggable(TAG, Log.DEBUG)) {
                             Log.d(TAG, "handleSyncHandlerMessage: MESSAGE_CANCEL: "
                                     + endpoint + " bundle: " + extras);
                         }
@@ -3071,11 +3061,9 @@ public class SyncManager {
                         SyncFinishedOrCancelledMessagePayload payload =
                                 (SyncFinishedOrCancelledMessagePayload) msg.obj;
                         if (!isSyncStillActiveH(payload.activeSyncContext)) {
-                            if (isLoggable) {
-                                Log.d(TAG, "handleSyncHandlerMessage: dropping since the "
-                                        + "sync is no longer active: "
-                                        + payload.activeSyncContext);
-                            }
+                            Log.d(TAG, "handleSyncHandlerMessage: dropping since the "
+                                    + "sync is no longer active: "
+                                    + payload.activeSyncContext);
                             break;
                         }
                         if (isLoggable) {
@@ -3090,7 +3078,7 @@ public class SyncManager {
 
                     case SyncHandler.MESSAGE_SERVICE_CONNECTED: {
                         ServiceConnectionData msgData = (ServiceConnectionData) msg.obj;
-                        if (isLoggable) {
+                        if (Log.isLoggable(TAG, Log.VERBOSE)) {
                             Log.d(TAG, "handleSyncHandlerMessage: MESSAGE_SERVICE_CONNECTED: "
                                     + msgData.activeSyncContext);
                         }
@@ -3106,7 +3094,7 @@ public class SyncManager {
                     case SyncHandler.MESSAGE_SERVICE_DISCONNECTED: {
                         final ActiveSyncContext currentSyncContext =
                                 ((ServiceConnectionData) msg.obj).activeSyncContext;
-                        if (isLoggable) {
+                        if (Log.isLoggable(TAG, Log.VERBOSE)) {
                             Log.d(TAG, "handleSyncHandlerMessage: MESSAGE_SERVICE_DISCONNECTED: "
                                     + currentSyncContext);
                         }
@@ -3141,7 +3129,7 @@ public class SyncManager {
 
                     case SyncHandler.MESSAGE_MONITOR_SYNC:
                         ActiveSyncContext monitoredSyncContext = (ActiveSyncContext) msg.obj;
-                        if (isLoggable) {
+                        if (Log.isLoggable(TAG, Log.DEBUG)) {
                             Log.d(TAG, "handleSyncHandlerMessage: MESSAGE_MONITOR_SYNC: " +
                                     monitoredSyncContext.mSyncOperation.target);
                         }
@@ -3149,7 +3137,7 @@ public class SyncManager {
                         if (isSyncNotUsingNetworkH(monitoredSyncContext)) {
                             Log.w(TAG, String.format(
                                     "Detected sync making no progress for %s. cancelling.",
-                                    logSafe(monitoredSyncContext)));
+                                    monitoredSyncContext));
                             mSyncJobService.callJobFinished(
                                     monitoredSyncContext.mSyncOperation.jobId, false,
                                     "no network activity");
@@ -3648,8 +3636,7 @@ public class SyncManager {
             } catch (RuntimeException exc) {
                 mLogger.log("Sync failed with RuntimeException: ", exc.toString());
                 closeActiveSyncContext(activeSyncContext);
-                Slog.e(TAG, "Caught RuntimeException while starting the sync "
-                        + logSafe(syncOperation), exc);
+                Slog.e(TAG, "Caught RuntimeException while starting the sync " + syncOperation, exc);
             }
         }
 
@@ -3749,8 +3736,7 @@ public class SyncManager {
                         reschedulePeriodicSyncH(syncOperation);
                     }
                 } else {
-                    Log.w(TAG, "failed sync operation "
-                            + logSafe(syncOperation) + ", " + syncResult);
+                    Log.w(TAG, "failed sync operation " + syncOperation + ", " + syncResult);
 
                     syncOperation.retries++;
                     if (syncOperation.retries > mConstants.getMaxRetriesWithAppStandbyExemption()) {
@@ -4132,6 +4118,11 @@ public class SyncManager {
             mLogger.log("Removing periodic sync ", op, " for ", why);
         }
         getJobScheduler().cancel(op.jobId);
+    }
+
+    private void wtfWithLog(String message) {
+        Slog.wtf(TAG, message);
+        mLogger.log("WTF: ", message);
     }
 
     public void resetTodayStats() {

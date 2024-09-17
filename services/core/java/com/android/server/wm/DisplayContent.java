@@ -400,14 +400,11 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
     private MagnificationSpec mMagnificationSpec;
 
-    /** Caches the value whether told display manager that we have content. */
-    private boolean mLastHasContent;
-
     private final Consumer<WindowState> mUpdateWindowsForAnimator = w -> {
         WindowStateAnimator winAnimator = w.mWinAnimator;
         final AppWindowToken atoken = w.mAppToken;
         if (winAnimator.mDrawState == READY_TO_SHOW) {
-            if (atoken == null || atoken.canShowWindows()) {
+            if (atoken == null || atoken.allDrawn) {
                 if (w.performShowLocked()) {
                     pendingLayoutChanges |= FINISH_LAYOUT_REDO_ANIM;
                     if (DEBUG_LAYOUT_REPEATS) {
@@ -776,8 +773,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
 
         final SurfaceControl.Builder b = mService.makeSurfaceBuilder(mSession)
                 .setSize(mSurfaceSize, mSurfaceSize)
-                .setOpaque(true)
-                .setContainerLayer(true);
+                .setOpaque(true);
         mWindowingLayer = b.setName("Display Root").build();
         mOverlayLayer = b.setName("Display Overlays").build();
 
@@ -1110,12 +1106,11 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             }
         }
 
-        forAllWindows(w -> {
-            w.forceSeamlesslyRotateIfAllowed(oldRotation, rotation);
-        }, true /* traverseTopToBottom */);
-
         if (rotateSeamlessly) {
-            seamlesslyRotate(getPendingTransaction(), oldRotation, rotation);
+            forAllWindows(w -> {
+                    w.mWinAnimator.seamlesslyRotateWindow(getPendingTransaction(),
+                            oldRotation, rotation);
+            }, true /* traverseTopToBottom */);
         }
 
         mService.mDisplayManagerInternal.performTraversal(getPendingTransaction());
@@ -1257,21 +1252,11 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
                     cutout, mInitialDisplayWidth, mInitialDisplayHeight);
         }
         final boolean rotated = (rotation == ROTATION_90 || rotation == ROTATION_270);
-        final List<Rect> bounds = WmDisplayCutout.computeSafeInsets(
-                        cutout, mInitialDisplayWidth, mInitialDisplayHeight)
-                .getDisplayCutout().getBoundingRects();
+        final Path bounds = cutout.getBounds().getBoundaryPath();
         transformPhysicalToLogicalCoordinates(rotation, mInitialDisplayWidth, mInitialDisplayHeight,
                 mTmpMatrix);
-        final Region region = Region.obtain();
-        for (int i = 0; i < bounds.size(); i++) {
-            final Rect rect = bounds.get(i);
-            final RectF rectF = new RectF(bounds.get(i));
-            mTmpMatrix.mapRect(rectF);
-            rectF.round(rect);
-            region.op(rect, Op.UNION);
-        }
-
-        return WmDisplayCutout.computeSafeInsets(DisplayCutout.fromBounds(region),
+        bounds.transform(mTmpMatrix);
+        return WmDisplayCutout.computeSafeInsets(DisplayCutout.fromBounds(bounds),
                 rotated ? mInitialDisplayHeight : mInitialDisplayWidth,
                 rotated ? mInitialDisplayWidth : mInitialDisplayHeight);
     }
@@ -1779,9 +1764,8 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         final int newDensity = mDisplayInfo.logicalDensityDpi;
         final DisplayCutout newCutout = mDisplayInfo.displayCutout;
 
-        final boolean sizeChanged = mInitialDisplayWidth != newWidth
-                || mInitialDisplayHeight != newHeight;
-        final boolean displayMetricsChanged = sizeChanged
+        final boolean displayMetricsChanged = mInitialDisplayWidth != newWidth
+                || mInitialDisplayHeight != newHeight
                 || mInitialDisplayDensity != mDisplayInfo.logicalDensityDpi
                 || !Objects.equals(mInitialDisplayCutout, newCutout);
 
@@ -1802,10 +1786,6 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
             mInitialDisplayDensity = newDensity;
             mInitialDisplayCutout = newCutout;
             mService.reconfigureDisplayLocked(this);
-        }
-
-        if (isDefaultDisplay && sizeChanged) {
-            mService.mH.post(mService.mAmInternal::notifyDefaultDisplaySizeChanged);
         }
     }
 
@@ -2920,9 +2900,8 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         forAllWindows(mApplySurfaceChangesTransaction, true /* traverseTopToBottom */);
         prepareSurfaces();
 
-        mLastHasContent = mTmpApplySurfaceChangesTransactionState.displayHasContent;
         mService.mDisplayManagerInternal.setDisplayProperties(mDisplayId,
-                mLastHasContent,
+                mTmpApplySurfaceChangesTransactionState.displayHasContent,
                 mTmpApplySurfaceChangesTransactionState.preferredRefreshRate,
                 mTmpApplySurfaceChangesTransactionState.preferredModeId,
                 true /* inTraversal, must call performTraversalInTrans... below */);
@@ -3704,19 +3683,13 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
                         .show(mSplitScreenDividerAnchor);
                 scheduleAnimation();
             } else {
-                // At this time mBoostedAppAnimationLayer may be used for animating,
-                // and ResizeableActivity is in it. mBoostedAppAnimationLayer.destroy()
-                // can also destroy the surface of ResizeableActivity, but the surface will
-                // be used after. So change to use transaction to call destroy to delay it,
-                // and ResizeableActivity is not in mBoostedAppAnimationLayer.
-                getPendingTransaction()
-                        .destroy(mAppAnimationLayer)
-                        .destroy(mBoostedAppAnimationLayer)
-                        .destroy(mHomeAppAnimationLayer)
-                        .destroy(mSplitScreenDividerAnchor);
+                mAppAnimationLayer.destroy();
                 mAppAnimationLayer = null;
+                mBoostedAppAnimationLayer.destroy();
                 mBoostedAppAnimationLayer = null;
+                mHomeAppAnimationLayer.destroy();
                 mHomeAppAnimationLayer = null;
+                mSplitScreenDividerAnchor.destroy();
                 mSplitScreenDividerAnchor = null;
             }
         }
@@ -3725,19 +3698,6 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
     private final class AboveAppWindowContainers extends NonAppWindowContainers {
         AboveAppWindowContainers(String name, WindowManagerService service) {
             super(name, service);
-        }
-
-        @Override
-        SurfaceControl.Builder makeChildSurface(WindowContainer child) {
-            final SurfaceControl.Builder builder = super.makeChildSurface(child);
-            if (child instanceof WindowToken && ((WindowToken) child).mRoundedCornerOverlay) {
-                // To draw above the ColorFade layer during the screen off transition, the
-                // rounded corner overlays need to be at the root of the surface hierarchy.
-                // TODO: move the ColorLayer into the display overlay layer such that this is not
-                // necessary anymore.
-                builder.setParent(null);
-            }
-            return builder;
         }
 
         @Override
@@ -3754,10 +3714,6 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
                 // See {@link mSplitScreenDividerAnchor}
                 if (wt.windowType == TYPE_DOCK_DIVIDER) {
                     wt.assignRelativeLayer(t, mTaskStackContainers.getSplitScreenDividerAnchor(), 1);
-                    continue;
-                }
-                if (wt.mRoundedCornerOverlay) {
-                    wt.assignLayer(t, WindowManagerPolicy.COLOR_FADE_LAYER + 1);
                     continue;
                 }
                 wt.assignLayer(t, j);
@@ -3901,7 +3857,7 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
         SurfaceSession s = child != null ? child.getSession() : getSession();
         final SurfaceControl.Builder b = mService.makeSurfaceBuilder(s);
         b.setSize(mSurfaceSize, mSurfaceSize);
-        b.setContainerLayer(true);
+
         if (child == null) {
             return b;
         }
@@ -4062,12 +4018,5 @@ class DisplayContent extends WindowContainer<DisplayContent.DisplayChildWindowCo
      */
     private boolean canUpdateImeTarget() {
         return mDeferUpdateImeTargetCount == 0;
-    }
-
-    /**
-     * @return Cached value whether we told display manager that we have content.
-     */
-    boolean getLastHasContent() {
-        return mLastHasContent;
     }
 }

@@ -360,7 +360,6 @@ class TaskSnapshotPersister {
 
             // For snapshots with reduced resolution, do not create or save full sized bitmaps
             if (mSnapshot.isReducedResolution()) {
-                swBitmap.recycle();
                 return true;
             }
 
@@ -373,8 +372,6 @@ class TaskSnapshotPersister {
                 Slog.e(TAG, "Unable to open " + file + " for persisting.", e);
                 return false;
             }
-            reduced.recycle();
-            swBitmap.recycle();
             return true;
         }
     }

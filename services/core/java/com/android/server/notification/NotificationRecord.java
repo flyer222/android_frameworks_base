@@ -128,11 +128,6 @@ public final class NotificationRecord {
     // The most recent update time, or the creation time if no updates.
     private long mUpdateTimeMs;
 
-    // The most recent interruption time, or the creation time if no updates. Differs from the
-    // above value because updates are filtered based on whether they actually interrupted the
-    // user
-    private long mInterruptionTimeMs;
-
     // Is this record an update of an old record?
     public boolean isUpdate;
     private int mPackagePriority;
@@ -185,7 +180,6 @@ public final class NotificationRecord {
         mRankingTimeMs = calculateRankingTimeMs(0L);
         mCreationTimeMs = sbn.getPostTime();
         mUpdateTimeMs = mCreationTimeMs;
-        mInterruptionTimeMs = mCreationTimeMs;
         mContext = context;
         stats = new NotificationUsageStats.SingleNotificationStats();
         mChannel = channel;
@@ -233,8 +227,8 @@ public final class NotificationRecord {
     }
 
     private Light calculateLights() {
-        // Lineage lights will set the default color later
-        int defaultLightColor = 0;
+        int defaultLightColor = mContext.getResources().getColor(
+                com.android.internal.R.color.config_defaultNotificationColor);
         int defaultLightOn = mContext.getResources().getInteger(
                 com.android.internal.R.integer.config_defaultNotificationLedOn);
         int defaultLightOff = mContext.getResources().getInteger(
@@ -254,11 +248,6 @@ public final class NotificationRecord {
                 if ((notification.defaults & Notification.DEFAULT_LIGHTS) != 0) {
                     light = new Light(defaultLightColor, defaultLightOn,
                             defaultLightOff);
-                } else if (light.color == 0) {
-                    // User has requested color 0.  However, lineage-sdk interprets
-                    // color 0 as "supply a default" therefore adjust alpha to make
-                    // the color still black but non-zero.
-                    light = new Light(0x01000000, light.onMs, light.offMs);
                 }
             } else {
                 light = null;
@@ -536,7 +525,6 @@ public final class NotificationRecord {
         pw.println(prefix + "mCreationTimeMs=" + mCreationTimeMs);
         pw.println(prefix + "mVisibleSinceMs=" + mVisibleSinceMs);
         pw.println(prefix + "mUpdateTimeMs=" + mUpdateTimeMs);
-        pw.println(prefix + "mInterruptionTimeMs=" + mInterruptionTimeMs);
         pw.println(prefix + "mSuppressedVisualEffects= " + mSuppressedVisualEffects);
         if (mPreChannelsNotification) {
             pw.println(prefix + String.format("defaults=0x%08x flags=0x%08x",
@@ -798,10 +786,6 @@ public final class NotificationRecord {
         return mVisibleSinceMs == 0 ? 0 : (int) (now - mVisibleSinceMs);
     }
 
-    public int getInterruptionMs(long now) {
-        return (int) (now - mInterruptionTimeMs);
-    }
-
     /**
      * Set the visibility of the notification.
      */
@@ -860,7 +844,7 @@ public final class NotificationRecord {
     public void setSeen() {
         mStats.setSeen();
         if (mTextChanged) {
-            setInterruptive(true);
+            mIsInterruptive = true;
         }
     }
 
@@ -956,17 +940,6 @@ public final class NotificationRecord {
 
     public void setInterruptive(boolean interruptive) {
         mIsInterruptive = interruptive;
-        final long now = System.currentTimeMillis();
-        mInterruptionTimeMs = interruptive ? now : mInterruptionTimeMs;
-
-        if (interruptive) {
-            MetricsLogger.action(getLogMaker()
-                    .setCategory(MetricsEvent.NOTIFICATION_INTERRUPTION)
-                    .setType(MetricsEvent.TYPE_OPEN)
-                    .addTaggedData(MetricsEvent.NOTIFICATION_SINCE_INTERRUPTION_MILLIS,
-                            getInterruptionMs(now)));
-            MetricsLogger.histogram(mContext, "note_interruptive", getInterruptionMs(now));
-        }
     }
 
     public void setTextChanged(boolean textChanged) {
@@ -1143,9 +1116,7 @@ public final class NotificationRecord {
                         sbn.getNotification().isGroupSummary() ? 1 : 0)
                 .addTaggedData(MetricsEvent.NOTIFICATION_SINCE_CREATE_MILLIS, getLifespanMs(now))
                 .addTaggedData(MetricsEvent.NOTIFICATION_SINCE_UPDATE_MILLIS, getFreshnessMs(now))
-                .addTaggedData(MetricsEvent.NOTIFICATION_SINCE_VISIBLE_MILLIS, getExposureMs(now))
-                .addTaggedData(MetricsEvent.NOTIFICATION_SINCE_INTERRUPTION_MILLIS,
-                        getInterruptionMs(now));
+                .addTaggedData(MetricsEvent.NOTIFICATION_SINCE_VISIBLE_MILLIS, getExposureMs(now));
     }
 
     public LogMaker getLogMaker() {

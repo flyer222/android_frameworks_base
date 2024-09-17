@@ -38,7 +38,7 @@ public class TunerSwitch extends SwitchPreference implements Tunable {
 
     @Override
     public void onTuningChanged(String key, String newValue) {
-        setChecked(TunerService.parseIntegerSwitch(newValue, mDefault));
+        setChecked(newValue != null ? Integer.parseInt(newValue) != 0 : mDefault);
     }
 
     @Override

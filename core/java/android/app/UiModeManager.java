@@ -24,6 +24,7 @@ import android.content.res.Configuration;
 import android.os.RemoteException;
 import android.os.ServiceManager;
 import android.os.ServiceManager.ServiceNotFoundException;
+import android.util.Log;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -211,7 +212,7 @@ public class UiModeManager {
     }
 
     /**
-     * Sets the system-wide night mode.
+     * Sets the night mode.
      * <p>
      * The mode can be one of:
      * <ul>
@@ -228,12 +229,6 @@ public class UiModeManager {
      * are only effective when the {@link Configuration#UI_MODE_TYPE_CAR car}
      * or {@link Configuration#UI_MODE_TYPE_DESK desk} mode is enabled on a
      * device. Starting in API 23, changes to night mode are always effective.
-     * <p>
-     * Changes to night mode take effect globally and will result in a configuration change
-     * (and potentially an Activity lifecycle event) being applied to all running apps.
-     * Developers interested in an app-local implementation of night mode should consider using
-     * {@link android.support.v7.app.AppCompatDelegate#setDefaultNightMode(int)} to manage the
-     * -night qualifier locally.
      *
      * @param mode the night mode to set
      * @see #getNightMode()

@@ -43,7 +43,7 @@ public interface QSTile {
     boolean isAvailable();
     void setTileSpec(String tileSpec);
 
-    @Deprecated default void clearState() {}
+    void clearState();
     void refreshState();
 
     void addCallback(Callback callback);
@@ -116,7 +116,6 @@ public interface QSTile {
         public boolean isTransient = false;
         public String expandedAccessibilityClassName;
         public SlashState slash;
-        public boolean handlesLongClick = true;
 
         public boolean copyTo(State other) {
             if (other == null) throw new IllegalArgumentException();
@@ -134,8 +133,7 @@ public interface QSTile {
                     || !Objects.equals(other.state, state)
                     || !Objects.equals(other.isTransient, isTransient)
                     || !Objects.equals(other.dualTarget, dualTarget)
-                    || !Objects.equals(other.slash, slash)
-                    || !Objects.equals(other.handlesLongClick, handlesLongClick);
+                    || !Objects.equals(other.slash, slash);
             other.icon = icon;
             other.iconSupplier = iconSupplier;
             other.label = label;
@@ -148,7 +146,6 @@ public interface QSTile {
             other.dualTarget = dualTarget;
             other.isTransient = isTransient;
             other.slash = slash != null ? slash.copy() : null;
-            other.handlesLongClick = handlesLongClick;
             return changed;
         }
 
@@ -295,33 +292,6 @@ public interface QSTile {
             SlashState state = new SlashState();
             state.rotation = rotation;
             state.isSlashed = isSlashed;
-            return state;
-        }
-    }
-
-    @ProvidesInterface(version = LiveDisplayState.VERSION)
-    public static class LiveDisplayState extends State {
-        public static final int VERSION = 1;
-        public int mode;
-
-        @Override
-        public boolean copyTo(State other) {
-            final LiveDisplayState o = (LiveDisplayState) other;
-            final boolean changed = mode != o.mode;
-            return super.copyTo(other) || changed;
-        }
-
-        @Override
-        protected StringBuilder toStringBuilder() {
-            final StringBuilder rt = super.toStringBuilder();
-            rt.insert(rt.length() - 1, ",mode=" + mode);
-            return rt;
-        }
-
-        @Override
-        public State copy() {
-            LiveDisplayState state = new LiveDisplayState();
-            copyTo(state);
             return state;
         }
     }

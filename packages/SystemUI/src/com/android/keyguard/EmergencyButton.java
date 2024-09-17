@@ -38,7 +38,6 @@ import com.android.internal.logging.nano.MetricsProto.MetricsEvent;
 import com.android.internal.telephony.IccCardConstants.State;
 import com.android.internal.widget.LockPatternUtils;
 import com.android.internal.util.EmergencyAffordanceManager;
-import com.android.systemui.util.EmergencyDialerConstants;
 
 /**
  * This class implements a smart emergency button that updates itself based
@@ -48,13 +47,11 @@ import com.android.systemui.util.EmergencyDialerConstants;
  */
 public class EmergencyButton extends Button {
     private static final Intent INTENT_EMERGENCY_DIAL = new Intent()
-            .setAction(EmergencyDialerConstants.ACTION_DIAL)
+            .setAction("com.android.phone.EmergencyDialer.DIAL")
             .setPackage("com.android.phone")
             .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                     | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
-                    | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            .putExtra(EmergencyDialerConstants.EXTRA_ENTRY_TYPE,
-                    EmergencyDialerConstants.ENTRY_TYPE_LOCKSCREEN_BUTTON);
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
     private static final String LOG_TAG = "EmergencyButton";
     private final EmergencyAffordanceManager mEmergencyAffordanceManager;

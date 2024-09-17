@@ -1,7 +1,5 @@
 /*
  * Copyright (C) 2007 The Android Open Source Project
- * Copyright (C) 2015 The CyanogenMod Project
- * Copyright (C) 2017 The LineageOS Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,10 +33,6 @@ import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_PEEK;
 import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_SCREEN_OFF;
 import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_SCREEN_ON;
 import static android.app.NotificationManager.Policy.SUPPRESSED_EFFECT_STATUS_BAR;
-import static android.content.Context.BIND_ADJUST_BELOW_PERCEPTIBLE;
-import static android.content.Context.BIND_ALLOW_WHITELIST_MANAGEMENT;
-import static android.content.Context.BIND_AUTO_CREATE;
-import static android.content.Context.BIND_FOREGROUND_SERVICE;
 import static android.content.pm.PackageManager.FEATURE_LEANBACK;
 import static android.content.pm.PackageManager.FEATURE_TELEVISION;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
@@ -97,7 +91,6 @@ import android.app.AutomaticZenRule;
 import android.app.IActivityManager;
 import android.app.INotificationManager;
 import android.app.ITransientNotification;
-import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationChannelGroup;
@@ -181,7 +174,6 @@ import android.util.AtomicFile;
 import android.util.Log;
 import android.util.Slog;
 import android.util.SparseArray;
-import android.util.TimeUtils;
 import android.util.Xml;
 import android.util.proto.ProtoOutputStream;
 import android.view.accessibility.AccessibilityEvent;
@@ -211,12 +203,8 @@ import com.android.server.lights.LightsManager;
 import com.android.server.notification.ManagedServices.ManagedServiceInfo;
 import com.android.server.notification.ManagedServices.UserProfiles;
 import com.android.server.policy.PhoneWindowManager;
-import com.android.server.pm.PackageManagerService;
 import com.android.server.statusbar.StatusBarManagerInternal;
 import com.android.server.wm.WindowManagerInternal;
-
-import org.lineageos.internal.notification.LedValues;
-import org.lineageos.internal.notification.LineageNotificationLights;
 
 import libcore.io.IoUtils;
 
@@ -242,7 +230,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
@@ -320,7 +307,6 @@ public class NotificationManagerService extends SystemService {
 
     private IActivityManager mAm;
     private ActivityManager mActivityManager;
-    private ActivityManagerInternal mAmi;
     private IPackageManager mPackageManager;
     private PackageManager mPackageManagerClient;
     AudioManager mAudioManager;
@@ -343,8 +329,6 @@ public class NotificationManagerService extends SystemService {
 
     private long[] mFallbackVibrationPattern;
     private boolean mUseAttentionLight;
-    boolean mHasLight = true;
-    boolean mLightEnabled;
     boolean mSystemReady;
 
     private boolean mDisableNotificationEffects;
@@ -359,9 +343,9 @@ public class NotificationManagerService extends SystemService {
     private int mInterruptionFilter = NotificationListenerService.INTERRUPTION_FILTER_UNKNOWN;
 
     // for enabling and disabling notification pulse behavior
-    boolean mScreenOn = true;
+    private boolean mScreenOn = true;
     protected boolean mInCall = false;
-    boolean mNotificationPulseEnabled;
+    private boolean mNotificationPulseEnabled;
 
     private Uri mInCallNotificationUri;
     private AudioAttributes mInCallNotificationAudioAttributes;
@@ -380,9 +364,6 @@ public class NotificationManagerService extends SystemService {
     final ArrayList<ToastRecord> mToastQueue = new ArrayList<>();
     final ArrayMap<String, NotificationRecord> mSummaryByGroupKey = new ArrayMap<>();
     final ArrayMap<Integer, ArrayList<NotifyingApp>> mRecentApps = new ArrayMap<>();
-    final ArrayMap<String, Long> mLastSoundTimestamps = new ArrayMap<>();
-
-    private KeyguardManager mKeyguardManager;
 
     // The last key in this list owns the hardware.
     ArrayList<String> mLights = new ArrayList<>();
@@ -422,8 +403,6 @@ public class NotificationManagerService extends SystemService {
 
     private MetricsLogger mMetricsLogger;
     private Predicate<String> mAllowedManagedServicePackages;
-
-    private LineageNotificationLights mLineageNotificationLights;
 
     private static class Archive {
         final int mBufferSize;
@@ -813,22 +792,8 @@ public class NotificationManagerService extends SystemService {
         @Override
         public void onNotificationError(int callingUid, int callingPid, String pkg, String tag, int id,
                 int uid, int initialPid, String message, int userId) {
-            final boolean fgService;
-            synchronized (mNotificationLock) {
-                NotificationRecord r = findNotificationLocked(pkg, tag, id, userId);
-                fgService = r != null && (r.getNotification().flags & FLAG_FOREGROUND_SERVICE) != 0;
-            }
             cancelNotification(callingUid, callingPid, pkg, tag, id, 0, 0, false, userId,
                     REASON_ERROR, null);
-            if (fgService) {
-                // Still crash for foreground services, preventing the not-crash behaviour abused
-                // by apps to give us a garbage notification and silently start a fg service.
-                Binder.withCleanCallingIdentity(
-                        () -> mAm.crashApplication(uid, initialPid, pkg, -1,
-                            "Bad notification(tag=" + tag + ", id=" + id + ") posted from package "
-                                + pkg + ", crashing app(uid=" + uid + ", pid=" + initialPid + "): "
-                                + message, true /* force */));
-            }
         }
 
         @Override
@@ -973,11 +938,8 @@ public class NotificationManagerService extends SystemService {
     @GuardedBy("mNotificationLock")
     private void clearLightsLocked() {
         // light
-        // clear only if lockscreen is not active
-        if (!mLineageNotificationLights.isKeyguardLocked()) {
-            mLights.clear();
-            updateLightsLocked();
-        }
+        mLights.clear();
+        updateLightsLocked();
     }
 
     protected final BroadcastReceiver mLocaleChangeReceiver = new BroadcastReceiver() {
@@ -1167,10 +1129,7 @@ public class NotificationManagerService extends SystemService {
                 }
             } else if (action.equals(Intent.ACTION_USER_PRESENT)) {
                 // turn off LED when user passes through lock screen
-                // if lights with screen on is disabled.
-                if (!mLineageNotificationLights.showLightsScreenOn()) {
-                    mNotificationLight.turnOff();
-                }
+                mNotificationLight.turnOff();
             } else if (action.equals(Intent.ACTION_USER_SWITCHED)) {
                 final int user = intent.getIntExtra(Intent.EXTRA_USER_HANDLE, USER_NULL);
                 // reload per-user settings
@@ -1239,8 +1198,7 @@ public class NotificationManagerService extends SystemService {
             ContentResolver resolver = getContext().getContentResolver();
             if (uri == null || NOTIFICATION_LIGHT_PULSE_URI.equals(uri)) {
                 boolean pulseEnabled = Settings.System.getIntForUser(resolver,
-                            Settings.System.NOTIFICATION_LIGHT_PULSE, 0, UserHandle.USER_CURRENT)
-                        != 0;
+                            Settings.System.NOTIFICATION_LIGHT_PULSE, 0, UserHandle.USER_CURRENT) != 0;
                 if (mNotificationPulseEnabled != pulseEnabled) {
                     mNotificationPulseEnabled = pulseEnabled;
                     updateNotificationPulse();
@@ -1284,15 +1242,6 @@ public class NotificationManagerService extends SystemService {
     }
 
     @VisibleForTesting
-    void setHints(int hints) {
-        mListenerHints = hints;
-    }
-
-    @VisibleForTesting
-    void setKeyguardManager(KeyguardManager keyguardManager) {
-        mKeyguardManager = keyguardManager;
-    }
-
     void setVibrator(Vibrator vibrator) {
         mVibrator = vibrator;
     }
@@ -1410,8 +1359,7 @@ public class NotificationManagerService extends SystemService {
             ICompanionDeviceManager companionManager, SnoozeHelper snoozeHelper,
             NotificationUsageStats usageStats, AtomicFile policyFile,
             ActivityManager activityManager, GroupHelper groupHelper, IActivityManager am,
-            UsageStatsManagerInternal appUsageStats, DevicePolicyManagerInternal dpm,
-            ActivityManagerInternal ami) {
+            UsageStatsManagerInternal appUsageStats, DevicePolicyManagerInternal dpm) {
         Resources resources = getContext().getResources();
         mMaxPackageEnqueueRate = Settings.Global.getFloat(getContext().getContentResolver(),
                 Settings.Global.MAX_NOTIFICATION_ENQUEUE_RATE,
@@ -1428,7 +1376,6 @@ public class NotificationManagerService extends SystemService {
         mAlarmManager = (AlarmManager) getContext().getSystemService(Context.ALARM_SERVICE);
         mCompanionManager = companionManager;
         mActivityManager = activityManager;
-        mAmi = ami;
         mDeviceIdleController = IDeviceIdleController.Stub.asInterface(
                 ServiceManager.getService(Context.DEVICE_IDLE_CONTROLLER));
         mDpm = dpm;
@@ -1459,7 +1406,6 @@ public class NotificationManagerService extends SystemService {
                         new Intent(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED_INTERNAL)
                                 .addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT),
                         UserHandle.ALL, android.Manifest.permission.MANAGE_NOTIFICATIONS);
-                mLineageNotificationLights.setZenMode(mZenModeHelper.getZenMode());
                 synchronized (mNotificationLock) {
                     updateInterruptionFilterLocked();
                 }
@@ -1514,8 +1460,6 @@ public class NotificationManagerService extends SystemService {
         mInCallNotificationVolume = resources.getFloat(R.dimen.config_inCallNotificationVolume);
 
         mUseAttentionLight = resources.getBoolean(R.bool.config_useAttentionLight);
-        mHasLight =
-                resources.getBoolean(com.android.internal.R.bool.config_intrusiveNotificationLed);
 
         // Don't start allowing notifications until the setup wizard has run once.
         // After that, including subsequent boots, init with notifications turned on.
@@ -1572,8 +1516,7 @@ public class NotificationManagerService extends SystemService {
                 (ActivityManager) getContext().getSystemService(Context.ACTIVITY_SERVICE),
                 getGroupHelper(), ActivityManager.getService(),
                 LocalServices.getService(UsageStatsManagerInternal.class),
-                LocalServices.getService(DevicePolicyManagerInternal.class),
-                LocalServices.getService(ActivityManagerInternal.class));
+                LocalServices.getService(DevicePolicyManagerInternal.class));
 
         // register for various Intents
         IntentFilter filter = new IntentFilter();
@@ -1619,16 +1562,8 @@ public class NotificationManagerService extends SystemService {
         IntentFilter localeChangedFilter = new IntentFilter(Intent.ACTION_LOCALE_CHANGED);
         getContext().registerReceiver(mLocaleChangeReceiver, localeChangedFilter);
 
-        mLineageNotificationLights = new LineageNotificationLights(getContext(),
-                 new LineageNotificationLights.LedUpdater() {
-            public void update() {
-                updateNotificationPulse();
-            }
-        });
-
         publishBinderService(Context.NOTIFICATION_SERVICE, mService, /* allowIsolated= */ false,
                 DUMP_FLAG_PRIORITY_CRITICAL | DUMP_FLAG_PRIORITY_NORMAL);
-        publishBinderService(Context.NOTIFICATION_SERVICE, mService);
         publishLocalService(NotificationManagerInternal.class, mInternalService);
     }
 
@@ -1677,7 +1612,6 @@ public class NotificationManagerService extends SystemService {
             mAudioManager = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
             mAudioManagerInternal = getLocalService(AudioManagerInternal.class);
             mWindowManagerInternal = LocalServices.getService(WindowManagerInternal.class);
-            mKeyguardManager = getContext().getSystemService(KeyguardManager.class);
             mZenModeHelper.onSystemReady();
         } else if (phase == SystemService.PHASE_THIRD_PARTY_APPS_CAN_START) {
             // This observer will force an update when observe is called, causing us to
@@ -1775,7 +1709,7 @@ public class NotificationManagerService extends SystemService {
         }
     }
 
-    void createNotificationChannelGroup(String pkg, int uid, NotificationChannelGroup group,
+    private void createNotificationChannelGroup(String pkg, int uid, NotificationChannelGroup group,
             boolean fromApp, boolean fromListener) {
         Preconditions.checkNotNull(group);
         Preconditions.checkNotNull(pkg);
@@ -2180,10 +2114,6 @@ public class NotificationManagerService extends SystemService {
             enforceSystemOrSystemUI("setNotificationsEnabledForPackage");
 
             mRankingHelper.setEnabled(pkg, uid, enabled);
-            mMetricsLogger.write(new LogMaker(MetricsEvent.ACTION_BAN_APP_NOTES)
-                    .setType(MetricsEvent.TYPE_ACTION)
-                    .setPackageName(pkg)
-                    .setSubtype(enabled ? 1 : 0));
             // Now, cancel any outstanding notifications that are part of a just-disabled app
             if (!enabled) {
                 cancelAllNotificationsInt(MY_UID, MY_PID, pkg, null, 0, 0, true,
@@ -2202,19 +2132,6 @@ public class NotificationManagerService extends SystemService {
             }
 
             savePolicyFile();
-        }
-
-        @Override
-        public void setNotificationSoundTimeout(String pkg, int uid, long timeout) {
-            checkCallerIsSystem();
-            mRankingHelper.setNotificationSoundTimeout(pkg, uid, timeout);
-            savePolicyFile();
-        }
-
-        @Override
-        public long getNotificationSoundTimeout(String pkg, int uid) {
-            checkCallerIsSystem();
-            return mRankingHelper.getNotificationSoundTimeout(pkg, uid);
         }
 
         /**
@@ -2251,11 +2168,6 @@ public class NotificationManagerService extends SystemService {
         @Override
         public boolean areNotificationsEnabledForPackage(String pkg, int uid) {
             checkCallerIsSystemOrSameApp(pkg);
-            if (UserHandle.getCallingUserId() != UserHandle.getUserId(uid)) {
-                getContext().enforceCallingPermission(
-                        android.Manifest.permission.INTERACT_ACROSS_USERS,
-                        "canNotifyAsPackage for uid " + uid);
-            }
 
             return mRankingHelper.getImportance(pkg, uid) != IMPORTANCE_NONE;
         }
@@ -2346,32 +2258,15 @@ public class NotificationManagerService extends SystemService {
             return mRankingHelper.getNotificationChannel(pkg, uid, channelId, includeDeleted);
         }
 
-        // Returns 'true' if the given channel has a notification associated
-        // with an active foreground service.
-        private void enforceDeletingChannelHasNoFgService(String pkg, int userId,
-                String channelId) {
-            if (mAmi.hasForegroundServiceNotification(pkg, userId, channelId)) {
-                // Would be a behavioral change to introduce a throw here, so
-                // we simply return without affecting the channel.
-                Slog.w(TAG, "Package u" + userId + "/" + pkg
-                        + " may not delete notification channel '"
-                        + channelId + "' with fg service");
-                throw new SecurityException("Not allowed to delete channel " + channelId
-                        + " with a foreground service");
-            }
-        }
-
         @Override
         public void deleteNotificationChannel(String pkg, String channelId) {
             checkCallerIsSystemOrSameApp(pkg);
             final int callingUid = Binder.getCallingUid();
-            final int callingUser = UserHandle.getUserId(callingUid);
             if (NotificationChannel.DEFAULT_CHANNEL_ID.equals(channelId)) {
                 throw new IllegalArgumentException("Cannot delete default channel");
             }
-            enforceDeletingChannelHasNoFgService(pkg, callingUser, channelId);
             cancelAllNotificationsInt(MY_UID, MY_PID, pkg, channelId, 0, 0, true,
-                    callingUser, REASON_CHANNEL_BANNED, null);
+                    UserHandle.getUserId(callingUid), REASON_CHANNEL_BANNED, null);
             mRankingHelper.deleteNotificationChannel(pkg, callingUid, channelId);
             mListeners.notifyNotificationChannelChanged(pkg,
                     UserHandle.getUserHandleForUid(callingUid),
@@ -2391,9 +2286,8 @@ public class NotificationManagerService extends SystemService {
         public ParceledListSlice<NotificationChannelGroup> getNotificationChannelGroups(
                 String pkg) {
             checkCallerIsSystemOrSameApp(pkg);
-
             return mRankingHelper.getNotificationChannelGroups(
-                    pkg, Binder.getCallingUid(), false, false, true);
+                    pkg, Binder.getCallingUid(), false, false);
         }
 
         @Override
@@ -2402,23 +2296,15 @@ public class NotificationManagerService extends SystemService {
 
             final int callingUid = Binder.getCallingUid();
             NotificationChannelGroup groupToDelete =
-                    mRankingHelper.getNotificationChannelGroupWithChannels(
-                            pkg, callingUid, groupId, false);
+                    mRankingHelper.getNotificationChannelGroup(groupId, pkg, callingUid);
             if (groupToDelete != null) {
-                // Preflight for allowability
-                final int userId = UserHandle.getUserId(callingUid);
-                List<NotificationChannel> groupChannels = groupToDelete.getChannels();
-                for (int i = 0; i < groupChannels.size(); i++) {
-                    enforceDeletingChannelHasNoFgService(pkg, userId,
-                            groupChannels.get(i).getId());
-                }
                 List<NotificationChannel> deletedChannels =
                         mRankingHelper.deleteNotificationChannelGroup(pkg, callingUid, groupId);
                 for (int i = 0; i < deletedChannels.size(); i++) {
                     final NotificationChannel deletedChannel = deletedChannels.get(i);
                     cancelAllNotificationsInt(MY_UID, MY_PID, pkg, deletedChannel.getId(), 0, 0,
                             true,
-                            userId, REASON_CHANNEL_BANNED,
+                            UserHandle.getUserId(Binder.getCallingUid()), REASON_CHANNEL_BANNED,
                             null);
                     mListeners.notifyNotificationChannelChanged(pkg,
                             UserHandle.getUserHandleForUid(callingUid),
@@ -2477,9 +2363,7 @@ public class NotificationManagerService extends SystemService {
         public ParceledListSlice<NotificationChannelGroup> getNotificationChannelGroupsForPackage(
                 String pkg, int uid, boolean includeDeleted) {
             checkCallerIsSystem();
-
-            return mRankingHelper.getNotificationChannelGroups(
-                    pkg, uid, includeDeleted, true, false);
+            return mRankingHelper.getNotificationChannelGroups(pkg, uid, includeDeleted, true);
         }
 
         @Override
@@ -2629,23 +2513,17 @@ public class NotificationManagerService extends SystemService {
             }
         }
 
-        /** Notifications returned here will have allowlistToken stripped from them. */
         private StatusBarNotification sanitizeSbn(String pkg, int userId,
                 StatusBarNotification sbn) {
             if (sbn.getPackageName().equals(pkg) && sbn.getUserId() == userId) {
                 // We could pass back a cloneLight() but clients might get confused and
                 // try to send this thing back to notify() again, which would not work
                 // very well.
-                Notification notification = sbn.getNotification().clone();
-                // Remove background token before returning notification to untrusted app, this
-                // ensures the app isn't able to perform background operations that are
-                // associated with notification interactions.
-                notification.setAllowlistToken(null);
                 return new StatusBarNotification(
                         sbn.getPackageName(),
                         sbn.getOpPkg(),
                         sbn.getId(), sbn.getTag(), sbn.getUid(), sbn.getInitialPid(),
-                        notification,
+                        sbn.getNotification().clone(),
                         sbn.getUser(), sbn.getOverrideGroupKey(), sbn.getPostTime());
             }
             return null;
@@ -3795,20 +3673,6 @@ public class NotificationManagerService extends SystemService {
         if ((mListenerHints & HINT_HOST_DISABLE_EFFECTS) != 0) {
             return "listenerHints";
         }
-        if (record != null && record.getAudioAttributes() != null) {
-            if ((mListenerHints & HINT_HOST_DISABLE_NOTIFICATION_EFFECTS) != 0) {
-                if (record.getAudioAttributes().getUsage()
-                        != AudioAttributes.USAGE_VOICE_COMMUNICATION) {
-                    return "listenerNoti";
-                }
-            }
-            if ((mListenerHints & HINT_HOST_DISABLE_CALL_EFFECTS) != 0) {
-                if (record.getAudioAttributes().getUsage()
-                        == AudioAttributes.USAGE_VOICE_COMMUNICATION) {
-                    return "listenerCall";
-                }
-            }
-        }
         if (mCallState != TelephonyManager.CALL_STATE_IDLE && !mZenModeHelper.isCall(record)) {
             return "callState";
         }
@@ -3961,7 +3825,6 @@ public class NotificationManagerService extends SystemService {
                         pw.println("  ");
                     }
                     pw.println("  mUseAttentionLight=" + mUseAttentionLight);
-                    pw.println("  mHasLight=" + mHasLight);
                     pw.println("  mNotificationPulseEnabled=" + mNotificationPulseEnabled);
                     pw.println("  mSoundNotificationKey=" + mSoundNotificationKey);
                     pw.println("  mVibrateNotificationKey=" + mVibrateNotificationKey);
@@ -4056,14 +3919,6 @@ public class NotificationManagerService extends SystemService {
                 pw.println("\n  Usage Stats:");
                 mUsageStats.dump(pw, "    ", filter);
             }
-
-            long now = SystemClock.elapsedRealtime();
-            pw.println("\n  Last notification sound timestamps:");
-            for (Map.Entry<String, Long> entry : mLastSoundTimestamps.entrySet()) {
-                pw.print("    " + entry.getKey() + " -> ");
-                TimeUtils.formatDuration(entry.getValue(), now, pw);
-                pw.println(" ago");
-            }
         }
     }
 
@@ -4088,30 +3943,25 @@ public class NotificationManagerService extends SystemService {
         public void removeForegroundServiceFlagFromNotification(String pkg, int notificationId,
                 int userId) {
             checkCallerIsSystem();
-            mHandler.post(() -> {
-                synchronized (mNotificationLock) {
-                    // strip flag from all enqueued notifications. listeners will be informed
-                    // in post runnable.
-                    List<NotificationRecord> enqueued = findNotificationsByListLocked(
-                            mEnqueuedNotifications, pkg, null, notificationId, userId);
-                    for (int i = 0; i < enqueued.size(); i++) {
-                        removeForegroundServiceFlagLocked(enqueued.get(i));
-                    }
-
-                    // if posted notification exists, strip its flag and tell listeners
-                    NotificationRecord r = findNotificationByListLocked(
-                            mNotificationList, pkg, null, notificationId, userId);
-                    if (r != null) {
-                        removeForegroundServiceFlagLocked(r);
-                        mRankingHelper.sort(mNotificationList);
-                        mListeners.notifyPostedLocked(r, r);
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    synchronized (mNotificationLock) {
+                        removeForegroundServiceFlagByListLocked(
+                                mEnqueuedNotifications, pkg, notificationId, userId);
+                        removeForegroundServiceFlagByListLocked(
+                                mNotificationList, pkg, notificationId, userId);
                     }
                 }
             });
         }
 
         @GuardedBy("mNotificationLock")
-        private void removeForegroundServiceFlagLocked(NotificationRecord r) {
+        private void removeForegroundServiceFlagByListLocked(
+                ArrayList<NotificationRecord> notificationList, String pkg, int notificationId,
+                int userId) {
+            NotificationRecord r = findNotificationByListLocked(
+                    notificationList, pkg, null, notificationId, userId);
             if (r == null) {
                 return;
             }
@@ -4122,6 +3972,8 @@ public class NotificationManagerService extends SystemService {
             // initially *and* force remove FLAG_FOREGROUND_SERVICE.
             sbn.getNotification().flags =
                     (r.mOriginalFlags & ~FLAG_FOREGROUND_SERVICE);
+            mRankingHelper.sort(mNotificationList);
+            mListeners.notifyPostedLocked(r, r);
         }
     };
 
@@ -4259,7 +4111,7 @@ public class NotificationManagerService extends SystemService {
     }
 
     private void doChannelWarningToast(CharSequence toastText) {
-        final int defaultWarningEnabled = Build.TYPE.equals("eng") ? 1 : 0;
+        final int defaultWarningEnabled = Build.IS_DEBUGGABLE ? 1 : 0;
         final boolean warningEnabled = Settings.Global.getInt(getContext().getContentResolver(),
                 Settings.Global.SHOW_NOTIFICATION_CHANNEL_WARNINGS, defaultWarningEnabled) != 0;
         if (warningEnabled) {
@@ -4389,6 +4241,13 @@ public class NotificationManagerService extends SystemService {
         final String pkg = r.sbn.getPackageName();
         final int callingUid = r.sbn.getUid();
 
+        final boolean isPackageSuspended = isPackageSuspendedForUser(pkg, callingUid);
+        if (isPackageSuspended) {
+            Slog.e(TAG, "Suppressing notification from package due to package "
+                    + "suspended by administrator.");
+            usageStats.registerSuspendedByAdmin(r);
+            return isPackageSuspended;
+        }
         final boolean isBlocked =
                 mRankingHelper.isGroupBlocked(pkg, callingUid, r.getChannel().getGroup())
                 || mRankingHelper.getImportance(pkg, callingUid)
@@ -4397,9 +4256,8 @@ public class NotificationManagerService extends SystemService {
         if (isBlocked) {
             Slog.e(TAG, "Suppressing notification from package by user request.");
             usageStats.registerBlocked(r);
-            return true;
         }
-        return false;
+        return isBlocked;
     }
 
     protected class SnoozeNotificationRunnable implements Runnable {
@@ -4577,11 +4435,7 @@ public class NotificationManagerService extends SystemService {
                         return;
                     }
 
-                    final boolean isPackageSuspended = isPackageSuspendedLocked(r);
-                    r.setHidden(isPackageSuspended);
-                    if (isPackageSuspended) {
-                        mUsageStats.registerSuspendedByAdmin(r);
-                    }
+                    r.setHidden(isPackageSuspendedLocked(r));
                     NotificationRecord old = mNotificationsByKey.get(key);
                     final StatusBarNotification n = r.sbn;
                     final Notification notification = n.getNotification();
@@ -4668,15 +4522,6 @@ public class NotificationManagerService extends SystemService {
     @GuardedBy("mNotificationLock")
     @VisibleForTesting
     protected boolean isVisuallyInterruptive(NotificationRecord old, NotificationRecord r) {
-        // Ignore summary updates because we don't display most of the information.
-        if (r.sbn.isGroup() && r.sbn.getNotification().isGroupSummary()) {
-            if (DEBUG_INTERRUPTIVENESS) {
-                Log.v(TAG, "INTERRUPTIVENESS: "
-                        +  r.getKey() + " is not interruptive: summary");
-            }
-            return false;
-        }
-
         if (old == null) {
             if (DEBUG_INTERRUPTIVENESS) {
                 Log.v(TAG, "INTERRUPTIVENESS: "
@@ -4710,6 +4555,15 @@ public class NotificationManagerService extends SystemService {
             if (DEBUG_INTERRUPTIVENESS) {
                 Log.v(TAG, "INTERRUPTIVENESS: "
                         +  r.getKey() + " is not interruptive: foreground service");
+            }
+            return false;
+        }
+
+        // Ignore summary updates because we don't display most of the information.
+        if (r.sbn.isGroup() && r.sbn.getNotification().isGroupSummary()) {
+            if (DEBUG_INTERRUPTIVENESS) {
+                Log.v(TAG, "INTERRUPTIVENESS: "
+                        +  r.getKey() + " is not interruptive: summary");
             }
             return false;
         }
@@ -4873,7 +4727,6 @@ public class NotificationManagerService extends SystemService {
             final PendingIntent pi = PendingIntent.getBroadcast(getContext(),
                     REQUEST_CODE_TIMEOUT,
                     new Intent(ACTION_NOTIFICATION_TIMEOUT)
-                            .setPackage(PackageManagerService.PLATFORM_PACKAGE_NAME)
                             .setData(new Uri.Builder().scheme(SCHEME_TIMEOUT)
                                     .appendPath(record.getKey()).build())
                             .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
@@ -4891,6 +4744,7 @@ public class NotificationManagerService extends SystemService {
         boolean beep = false;
         boolean blink = false;
 
+        final Notification notification = record.sbn.getNotification();
         final String key = record.getKey();
 
         // Should this notification make noise, vibe, or use the LED?
@@ -4907,13 +4761,13 @@ public class NotificationManagerService extends SystemService {
         // If the notification will appear in the status bar, it should send an accessibility
         // event
         if (!record.isUpdate && record.getImportance() > IMPORTANCE_MIN) {
-            sendAccessibilityEvent(record);
+            sendAccessibilityEvent(notification, record.sbn.getPackageName());
             sentAccessibilityEvent = true;
         }
 
         if (aboveThreshold && isNotificationForCurrentUser(record)) {
 
-            if (!isInSoundTimeoutPeriod(record) && mSystemReady && mAudioManager != null) {
+            if (mSystemReady && mAudioManager != null) {
                 Uri soundUri = record.getSound();
                 hasValidSound = soundUri != null && !Uri.EMPTY.equals(soundUri);
                 long[] vibration = record.getVibration();
@@ -4931,7 +4785,7 @@ public class NotificationManagerService extends SystemService {
                 boolean hasAudibleAlert = hasValidSound || hasValidVibrate;
                 if (hasAudibleAlert && !shouldMuteNotificationLocked(record)) {
                     if (!sentAccessibilityEvent) {
-                        sendAccessibilityEvent(record);
+                        sendAccessibilityEvent(notification, record.sbn.getPackageName());
                         sentAccessibilityEvent = true;
                     }
                     if (DBG) Slog.v(TAG, "Interrupting!");
@@ -4968,7 +4822,8 @@ public class NotificationManagerService extends SystemService {
         // light
         // release the light
         boolean wasShowLights = mLights.remove(key);
-        if (canShowLightsLocked(record, aboveThreshold)) {
+        if (record.getLight() != null && aboveThreshold
+                && ((record.getSuppressedVisualEffects() & SUPPRESSED_EFFECT_LIGHTS) == 0)) {
             mLights.add(key);
             updateLightsLocked();
             if (mUseAttentionLight) {
@@ -4978,26 +4833,8 @@ public class NotificationManagerService extends SystemService {
         } else if (wasShowLights) {
             updateLightsLocked();
         }
-
-        if (buzz || beep) {
-            mLastSoundTimestamps.put(generateLastSoundTimeoutKey(record),
-                    SystemClock.elapsedRealtime());
-        }
-
         if (buzz || beep || blink) {
-            // Ignore summary updates because we don't display most of the information.
-            if (record.sbn.isGroup() && record.sbn.getNotification().isGroupSummary()) {
-                if (DEBUG_INTERRUPTIVENESS) {
-                    Log.v(TAG, "INTERRUPTIVENESS: "
-                            + record.getKey() + " is not interruptive: summary");
-                }
-            } else {
-                if (DEBUG_INTERRUPTIVENESS) {
-                    Log.v(TAG, "INTERRUPTIVENESS: "
-                            + record.getKey() + " is interruptive: alerted");
-                }
-                record.setInterruptive(true);
-            }
+            record.setInterruptive(true);
             MetricsLogger.action(record.getLogMaker()
                     .setCategory(MetricsEvent.NOTIFICATION_ALERT)
                     .setType(MetricsEvent.TYPE_OPEN)
@@ -5006,66 +4843,12 @@ public class NotificationManagerService extends SystemService {
         }
     }
 
-    private boolean isInSoundTimeoutPeriod(NotificationRecord record) {
-        long timeoutMillis = mRankingHelper.getNotificationSoundTimeout(
-                record.sbn.getPackageName(), record.sbn.getUid());
-        if (timeoutMillis == 0) {
-            return false;
-        }
-
-        Long value = mLastSoundTimestamps.get(generateLastSoundTimeoutKey(record));
-        if (value == null) {
-            return false;
-        }
-        return SystemClock.elapsedRealtime() - value < timeoutMillis;
-    }
-
-    private String generateLastSoundTimeoutKey(NotificationRecord record) {
-        return record.sbn.getPackageName() + "|" + record.sbn.getUid();
-    }
-
-    @GuardedBy("mNotificationLock")
-    boolean canShowLightsLocked(final NotificationRecord record, boolean aboveThreshold) {
-        // device lacks light
-        if (!mHasLight) {
-            return false;
-        }
-        // Forced on
-        // Used by LineageParts light picker
-        // eg to allow selecting battery light color when notification led is turned off.
-        if (isLedForcedOn(record)) {
-            return true;
-        }
-        // user turned lights off globally
-        if (!mNotificationPulseEnabled) {
-            return false;
-        }
-        // the notification/channel has no light
-        if (record.getLight() == null) {
-            return false;
-        }
-        // unimportant notification
-        if (!aboveThreshold) {
-            return false;
-        }
-        // Suppressed because it's a silent update
-        final Notification notification = record.getNotification();
-        if (record.isUpdate && (notification.flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0) {
-            return false;
-        }
-        // Suppressed because another notification in its group handles alerting
-        if (record.sbn.isGroup() && record.getNotification().suppressAlertingDueToGrouping()) {
-            return false;
-        }
-
-        return true;
-    }
-
     @GuardedBy("mNotificationLock")
     boolean shouldMuteNotificationLocked(final NotificationRecord record) {
         // Suppressed because it's a silent update
         final Notification notification = record.getNotification();
-        if (record.isUpdate && (notification.flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0) {
+        if(record.isUpdate
+                && (notification.flags & Notification.FLAG_ONLY_ALERT_ONCE) != 0) {
             return true;
         }
 
@@ -5565,30 +5348,17 @@ public class NotificationManagerService extends SystemService {
         return (x < low) ? low : ((x > high) ? high : x);
     }
 
-    void sendAccessibilityEvent(NotificationRecord record) {
+    void sendAccessibilityEvent(Notification notification, CharSequence packageName) {
         if (!mAccessibilityManager.isEnabled()) {
             return;
         }
 
-        final Notification notification = record.getNotification();
-        final CharSequence packageName = record.sbn.getPackageName();
-        final AccessibilityEvent event =
+        AccessibilityEvent event =
             AccessibilityEvent.obtain(AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED);
         event.setPackageName(packageName);
         event.setClassName(Notification.class.getName());
-        final int visibilityOverride = record.getPackageVisibilityOverride();
-        final int notifVisibility = visibilityOverride == NotificationManager.VISIBILITY_NO_OVERRIDE
-                ? notification.visibility : visibilityOverride;
-        final int userId = record.getUser().getIdentifier();
-        final boolean needPublic = userId >= 0 && mKeyguardManager.isDeviceLocked(userId);
-        if (needPublic && notifVisibility != Notification.VISIBILITY_PUBLIC) {
-            // Emit the public version if we're on the lockscreen and this notification isn't
-            // publicly visible.
-            event.setParcelableData(notification.publicVersion);
-        } else {
-            event.setParcelableData(notification);
-        }
-        final CharSequence tickerText = notification.tickerText;
+        event.setParcelableData(notification);
+        CharSequence tickerText = notification.tickerText;
         if (!TextUtils.isEmpty(tickerText)) {
             event.getText().add(tickerText);
         }
@@ -5883,15 +5653,8 @@ public class NotificationManagerService extends SystemService {
                         userId, mustHaveFlags, mustNotHaveFlags, reason, listenerName);
 
                 synchronized (mNotificationLock) {
-                    // If the notification is currently enqueued, repost this runnable so it has a
-                    // chance to notify listeners
-                    if ((findNotificationByListLocked(
-                            mEnqueuedNotifications, pkg, tag, id, userId)) != null) {
-                        mHandler.post(this);
-                    }
-                    // Look for the notification in the posted list, since we already checked enq
-                    NotificationRecord r = findNotificationByListLocked(
-                            mNotificationList, pkg, tag, id, userId);
+                    // Look for the notification, searching both the posted and enqueued lists.
+                    NotificationRecord r = findNotificationLocked(pkg, tag, id, userId);
                     if (r != null) {
                         // The notification was found, check if it should be removed.
 
@@ -6165,36 +5928,17 @@ public class NotificationManagerService extends SystemService {
             }
         }
 
-        NotificationRecord.Light light = ledNotification != null ?
-                ledNotification.getLight() : null;
-        if (ledNotification == null || mLineageNotificationLights == null || light == null) {
-            mNotificationLight.turnOff();
-            return;
-        }
-
-        LedValues ledValues = new LedValues(light.color, light.onMs, light.offMs);
-        mLineageNotificationLights.calcLights(ledValues, ledNotification.sbn.getPackageName(),
-                ledNotification.sbn.getNotification(), mScreenOn || mInCall,
-                ledNotification.getSuppressedVisualEffects());
-
-        if (!ledValues.isEnabled()) {
+        // Don't flash while we are in a call or screen is on
+        if (ledNotification == null || mInCall || mScreenOn) {
             mNotificationLight.turnOff();
         } else {
-            mNotificationLight.setModes(ledValues.getBrightness());
-
-            // we are using 1:0 to indicate LED should stay always on
-            if (ledValues.getOnMs() == 1 && ledValues.getOffMs() == 0) {
-                mNotificationLight.setColor(ledValues.getColor());
-            } else {
-                mNotificationLight.setFlashing(ledValues.getColor(), Light.LIGHT_FLASH_TIMED,
-                        ledValues.getOnMs(), ledValues.getOffMs());
+            NotificationRecord.Light light = ledNotification.getLight();
+            if (light != null && mNotificationPulseEnabled) {
+                // pulse repeatedly
+                mNotificationLight.setFlashing(light.color, Light.LIGHT_FLASH_TIMED,
+                        light.onMs, light.offMs);
             }
         }
-    }
-
-    private boolean isLedForcedOn(NotificationRecord nr) {
-        return nr != null ?
-                mLineageNotificationLights.isForcedOn(nr.sbn.getNotification()) : false;
     }
 
     @GuardedBy("mNotificationLock")
@@ -6263,21 +6007,6 @@ public class NotificationManagerService extends SystemService {
             }
         }
         return null;
-    }
-
-    @GuardedBy("mNotificationLock")
-    private List<NotificationRecord> findNotificationsByListLocked(
-            ArrayList<NotificationRecord> list, String pkg, String tag, int id, int userId) {
-        List<NotificationRecord> matching = new ArrayList<>();
-        final int len = list.size();
-        for (int i = 0; i < len; i++) {
-            NotificationRecord r = list.get(i);
-            if (notificationMatchesUserId(r, userId) && r.sbn.getId() == id &&
-                    TextUtils.equals(r.sbn.getTag(), tag) && r.sbn.getPackageName().equals(pkg)) {
-                matching.add(r);
-            }
-        }
-        return matching;
     }
 
     @GuardedBy("mNotificationLock")
@@ -6733,16 +6462,6 @@ public class NotificationManagerService extends SystemService {
         }
 
         @Override
-        protected int getBindFlags() {
-            // Most of the same flags as the base, but also add BIND_ADJUST_BELOW_PERCEPTIBLE
-            // because too many 3P apps could be kept in memory as notification listeners and
-            // cause extreme memory pressure.
-            // TODO: Change the binding lifecycle of NotificationListeners to avoid this situation.
-            return BIND_AUTO_CREATE | BIND_FOREGROUND_SERVICE
-                    | BIND_ADJUST_BELOW_PERCEPTIBLE | BIND_ALLOW_WHITELIST_MANAGEMENT;
-        }
-
-        @Override
         protected Config getConfig() {
             Config c = new Config();
             c.caption = "notification listener";
@@ -6833,6 +6552,7 @@ public class NotificationManagerService extends SystemService {
                 if (!oldSbnVisible && !sbnVisible) {
                     continue;
                 }
+
                 // If the notification is hidden, don't notifyPosted listeners targeting < P.
                 // Instead, those listeners will receive notifyPosted when the notification is
                 // unhidden.
@@ -7259,7 +6979,6 @@ public class NotificationManagerService extends SystemService {
 
     @VisibleForTesting
     protected void simulatePackageSuspendBroadcast(boolean suspend, String pkg) {
-        checkCallerIsSystemOrShell();
         // only use for testing: mimic receive broadcast that package is (un)suspended
         // but does not actually (un)suspend the package
         final Bundle extras = new Bundle();
@@ -7267,7 +6986,7 @@ public class NotificationManagerService extends SystemService {
                 new String[]{pkg});
 
         final String action = suspend ? Intent.ACTION_PACKAGES_SUSPENDED
-                : Intent.ACTION_PACKAGES_UNSUSPENDED;
+            : Intent.ACTION_PACKAGES_UNSUSPENDED;
         final Intent intent = new Intent(action);
         intent.putExtras(extras);
 

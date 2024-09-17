@@ -78,7 +78,6 @@ public class FileCollector {
         EXTENSION_MAP.put("wav", AUDIO);
         EXTENSION_MAP.put("ogg", AUDIO);
         EXTENSION_MAP.put("oga", AUDIO);
-        EXTENSION_MAP.put("opus", AUDIO);
         // Video
         EXTENSION_MAP.put("3gpp", VIDEO);
         EXTENSION_MAP.put("3gp", VIDEO);

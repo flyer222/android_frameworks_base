@@ -36,8 +36,7 @@ import java.util.List;
 
 public class ZenLog {
     private static final String TAG = "ZenLog";
-    // the ZenLog is *very* verbose, so be careful about setting this to true
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = Build.IS_DEBUGGABLE;
 
     private static final int SIZE = Build.IS_DEBUGGABLE ? 100 : 20;
 

@@ -258,13 +258,13 @@ public class BootReceiver extends BroadcastReceiver {
 
         // Start watching for new tombstone files; will record them as they occur.
         // This gets registered with the singleton file observer thread.
-        sTombstoneObserver = new FileObserver(TOMBSTONE_DIR.getPath(), FileObserver.CREATE) {
+        sTombstoneObserver = new FileObserver(TOMBSTONE_DIR.getPath(), FileObserver.CLOSE_WRITE) {
             @Override
             public void onEvent(int event, String path) {
                 HashMap<String, Long> timestamps = readTimestamps();
                 try {
                     File file = new File(TOMBSTONE_DIR, path);
-                    if (file.isFile() && file.getName().startsWith("tombstone_")) {
+                    if (file.isFile()) {
                         addFileToDropBox(db, timestamps, headers, file.getPath(), LOG_SIZE,
                                 TAG_TOMBSTONE);
                     }
